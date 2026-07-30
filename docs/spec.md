@@ -1,0 +1,264 @@
+# micscope — specification
+
+Status: **design, not yet implemented.** Seeded 2026-07-30.
+Target: v0.1.0, GTK3 desktop app, installed from a `.deb`.
+
+---
+
+## 1. Purpose
+
+One window that tells the truth about a capture device:
+
+- the **real analog gain** in dB, read from the ALSA hardware control;
+- the **signal level** in dBFS, with peak hold and a target band;
+- whether the device is **clipping**, counted in samples rather than guessed
+  from a peak indicator.
+
+And it lets you set the gain **in dB**, not as a percentage of an opaque curve.
+
+## 2. Why this needs to exist
+
+Every existing GUI on Ubuntu misreports microphone gain, because
+PipeWire/PulseAudio volume is not the analog gain and the mapping between them
+is neither linear nor lossless.
+
+Measured 2026-07-30 on `daniellaptop` (Realtek ALC257, `alsa_input.pci-0000_04_00.6.analog-stereo`),
+both readings taken at the same instant:
+
+| Source | Reading |
+|---|---|
+| `pactl` / pavucontrol / GNOME Sound | **−55.25 dB** |
+| ALSA `Capture` control (the actual preamp) | **+4.50 dB** |
+
+A 60 dB discrepancy. The full useful analog range is compressed into
+`pactl` 5%–35%, and everything above ~35% is pinned at maximum:
+
+| pactl volume | analog gain | index |
+|---|---|---|
+| 5% | −17.25 dB | 0/63 |
+| 8% | −6.00 dB | 15/63 |
+| 10% | 0.00 dB | 23/63 |
+| 12% | +4.50 dB | 29/63 |
+| 15% | +10.50 dB | 37/63 |
+| 20% | +18.00 dB | 47/63 |
+| 30% | +28.50 dB | 61/63 |
+| 35% and above | +30.00 dB (pinned) | 63/63 |
+
+The consequence is that a slider sitting a third of the way along — which
+looks conservative — is in fact maximum analog boost. Room noise then reaches
+−11 dBFS peak and speech saturates the ADC. **Clipping happens before the
+digital domain, so no filter, AGC or noise suppressor downstream can repair
+it**; recognition accuracy collapses while the mic still appears to work.
+
+This is not hypothetical: it is the failure mode that made dictation unusable
+on the reference machine, and it went undiagnosed for months precisely because
+the available meters looked fine.
+
+## 3. Non-goals
+
+- **No audio processing, ever.** micscope inserts no filter, no virtual
+  source, no AGC, no noise suppression. It observes, and it sets gain. The
+  audio graph must be byte-identical before and after running it.
+- Not a recorder, not an equaliser, not a routing tool (`helvum`/`qpwgraph`
+  already do routing).
+- No system configuration files installed. Nothing in `/etc`.
+
+The sibling project `dictamic` took the opposite approach — inserting a WebRTC
+AGC/noise-suppression/AEC chain as a virtual source — and measurement showed
+raw audio at correct analog gain had a **9 dB lower noise floor than the full
+processing chain achieved** (−56.4 vs −46.9 dBFS). The processing was solving
+a problem that correct gain solves better. micscope exists to make correct
+gain easy to see and set, which is the part that actually works.
+
+## 4. Core mechanism
+
+### 4.1 Reading the gain curve (non-invasive)
+
+```
+$ amixer -c 1 cget name='Capture Volume'
+numid=6,iface=MIXER,name='Capture Volume'
+  ; type=INTEGER,access=rw---R--,values=2,min=0,max=63,step=0
+  : values=29,29
+  | dBscale-min=-17.25dB,step=0.75dB,mute=0
+```
+
+From this single command, with no writes:
+
+```
+dB(index) = dBscale_min + step_dB × index
+```
+
+Verified against measurement: index 23 → 0.00 dB, index 29 → +4.50 dB,
+index 63 → +30.00 dB. All three match `amixer sget` exactly.
+
+**Requirement: derive the curve per device at runtime. Never hard-code a
+percentage or a dB figure.** Hard-coding "35% is the sweet spot" from one
+laptop is exactly the bug this project exists to correct, and the same number
+is wrong on the very machine it was measured on.
+
+Not all cards expose a `dBscale` TLV. When absent, fall back to probing
+min/mid/max (set, read, restore original) once at first run, cache the result
+in `~/.config/micscope/devices.json`, and label the curve as *probed* rather
+than *declared* in the UI.
+
+### 4.2 Setting the gain
+
+```
+amixer -c <card> cset numid=<numid> <index>,<index>
+```
+
+Set by index; display in dB. Never route gain changes through `pactl`, whose
+mapping is the problem being solved.
+
+### 4.3 Capturing audio for the meter
+
+```
+parec --device=<source> --format=s16le --rate=48000 --channels=<native>
+```
+
+- Read the device's **native channel count** and analyse channels
+  **independently**. Do not downmix: averaging two channels hides clipping
+  that affects only one, and on this hardware the two internal-mic channels do
+  not behave identically.
+- `parec` subprocess rather than a Python audio binding, to keep the
+  dependency set to what is already required for a GTK app.
+- Capture from the **hardware** device by default, not from the default
+  source, since the default source may be a processed virtual node.
+
+## 5. UI
+
+Single window, four panes, no tabs — the point is seeing all four facts at once.
+
+### 5.1 Gain pane
+
+- Slider bound to the ALSA control **index**, labelled in dB.
+- Current value large and unambiguous: `+4.50 dB (index 29 / 63)`.
+- Curve endpoints shown: `range −17.25 … +30.00 dB, 0.75 dB per step`.
+- Zones shaded on the slider track:
+  - **safe**: 0 dB to +6 dB
+  - **caution**: +6 dB to +15 dB
+  - **danger**: above +15 dB
+  These are derived from the measured curve, not fixed percentages.
+- `Mic Boost` / `Internal Mic Boost` controls shown read-only if present, with
+  a warning if either is non-zero — they stack on top of `Capture` and are a
+  second, independent way to reach clipping.
+- Alongside, deliberately: **"PipeWire reports: 12% / −55.25 dB"**, explicitly
+  labelled *not the analog gain*. Showing the discrepancy teaches the trap
+  instead of hiding it, and lets the user correlate what micscope says with
+  what every other tool says.
+
+### 5.2 Level pane
+
+- Vertical or horizontal dBFS meter, log scale, −60 → 0 dBFS.
+- Instantaneous RMS bar plus **peak-hold marker**, decay ≈ 1.5 s.
+- Target band shaded: **peaks −18 to −10 dBFS**.
+- Red above −3 dBFS.
+- One meter **per channel**, side by side.
+- Numeric readout: current RMS, held peak, rolling noise-floor estimate
+  (10th percentile of RMS over the last 10 s).
+
+### 5.3 Clipping pane
+
+A peak indicator lighting up is a threshold check and misses brief saturation
+that still wrecks recognition. Count it instead:
+
+- **Clipped samples**: `|s| >= 32764` for s16 (small margin absorbs resampler
+  rounding). Per channel.
+- **Clipped runs**: ≥ 3 consecutive clipped samples. Isolated full-scale
+  samples occur naturally; runs mean genuine saturation. Report count and
+  longest run.
+- Time since last clip; total monitoring duration; reset button.
+
+### 5.4 Calibration assistant
+
+The feature that makes this worth building — it automates what currently takes
+a session of manual `parecord` and `sox` work:
+
+1. **"Stay quiet"**, 3 s → measure noise floor (RMS and peak).
+2. **"Speak normally, at your usual distance"**, 8 s → measure speech RMS and peak.
+3. Compute the gain-index delta that would place speech peaks at **−12 dBFS**.
+4. Validate the result: require noise floor ≤ −50 dBFS **and** headroom ≥ 12 dB.
+   If speech and noise are too close, the problem is the room or the mic, not
+   the gain — say so rather than recommending a number.
+5. Show recommendation as before/after (dB, index, predicted peak), apply on
+   one click, and re-measure to confirm.
+
+### 5.5 Device selection
+
+- Enumerate capture sources; mark hardware (`alsa_input.*`) distinctly from
+  virtual/processed nodes.
+- Analog gain exists **only** on hardware devices. If the user selects a
+  virtual source (e.g. `asr_mic`, `easyeffects_source`), show
+  *"processed stream — no analog gain"*, resolve the underlying hardware
+  device by walking `pw-link` and offer to switch to it.
+- Warn when the **system default source is a virtual node** while the user is
+  tuning a hardware device, since their dictation app may not be recording
+  what they are looking at.
+
+## 6. Persistence
+
+Gain does not reliably stay put: wireplumber restores its own saved per-route
+volume when a device becomes default or a route changes, which was observed
+resetting the analog gain to maximum twice in one session on the reference
+machine.
+
+- Offer an explicit **"remember this gain"** that writes the chosen index to
+  `~/.config/micscope/devices.json`.
+- Optional user-level systemd unit (`micscope-restore.service`,
+  `WantedBy=default.target`) that reapplies the saved index after
+  wireplumber settles. Off by default; the GUI enables it.
+- Detect and surface drift: if the current index differs from the remembered
+  one, say so in the gain pane rather than silently correcting.
+
+## 7. Packaging
+
+House convention, matching `dictamic`: a self-contained `build-deb.sh` that
+assembles a tree and calls `dpkg-deb --build --root-owner-group`.
+
+```
+./build-deb.sh 0.1.0     # → dist/micscope_0.1.0_all.deb
+```
+
+Output goes to **`dist/`, not `build/`** — `build/` is excluded by the global
+gitignore, so artefacts placed there cannot be committed.
+
+| Path | Content |
+|---|---|
+| `/usr/bin/micscope` | the app (mode 755) |
+| `/usr/share/applications/micscope.desktop` | menu entry |
+| `/usr/share/doc/micscope/` | README, spec |
+
+- `Architecture: all`, `Section: sound`
+- `Depends: python3, python3-gi, gir1.2-gtk-3.0, pulseaudio-utils, alsa-utils`
+- **No `conffiles`** and no `postinst` logic — micscope installs nothing into
+  `/etc` and requires no PipeWire restart. Deliberate contrast with dictamic.
+
+GTK3 rather than GTK4/libadwaita, to match the sibling app and reuse an
+already-present dependency set. Revisit if the app outgrows it.
+
+## 8. Acceptance criteria
+
+1. Reported analog gain matches `amixer -c <card> sget Capture` exactly, at
+   every index, on the reference hardware.
+2. The gain curve is read from the device, and a second machine with a
+   different codec produces a different, correct curve with no code change.
+3. With gain forced to maximum and normal speech, the clipping pane reports
+   non-zero clipped runs. At the calibrated gain, it reports zero over 60 s.
+4. Calibration on the reference laptop recommends an index in the 23–29 range
+   (0 to +4.5 dB), consistent with the manual result of 2026-07-30.
+5. **Zero effect on the audio graph**: `pw-link -l` and `pactl list short sources`
+   produce identical output before launch and after quit. No node created, no
+   default changed unless the user explicitly asks.
+6. Meter latency under ~100 ms, and no audible or measurable effect on a
+   concurrent recording by another application.
+
+## 9. Open questions
+
+- Should micscope offer to *disable* competing processing it detects
+  (`asr_mic`, `easyeffects_source` in the graph), or only report it? Leaning
+  report-only, per the no-side-effects goal.
+- `python3-alsaaudio` (packaged, 0.10.0) would replace `amixer` parsing with a
+  real binding. Cleaner, but adds a dependency and the `amixer` commands above
+  are already proven. Defer to implementation.
+- Is a tray/indicator mode worth it for drift warnings, or does that
+  re-create dictamic's mostly-useless monitor GUI?

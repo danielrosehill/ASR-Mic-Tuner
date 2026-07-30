@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=micscope
+Comment=Microphone gain, level and clipping meter — shows true analog gain in dB
+Exec=micscope
+Icon=audio-input-microphone
+Categories=AudioVideo;Audio;Settings;
+Keywords=microphone;mic;gain;level;meter;clipping;dictation;
+Terminal=false
