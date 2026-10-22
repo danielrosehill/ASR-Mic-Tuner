@@ -40,7 +40,7 @@ class TrayPopup(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 12, 14, 12)
         top = QHBoxLayout()
-        title = QLabel("<b>micscope</b>")
+        title = QLabel("<b>Mic Monitor</b>")
         top.addWidget(title)
         top.addStretch(1)
         close = QPushButton("✕")
@@ -88,7 +88,7 @@ class TrayPopup(QWidget):
         prow.addWidget(apply)
         root.addLayout(prow)
         brow = QHBoxLayout()
-        for label, tab in (("Open micscope", "monitor"), ("Measure…", "measure")):
+        for label, tab in (("Open Mic Monitor", "monitor"), ("Measure…", "measure")):
             b = QPushButton(label)
             b.clicked.connect(lambda _c=False, tab=tab: (self.hide(), self.ctl.show_window(tab)))
             brow.addWidget(b)
@@ -215,7 +215,7 @@ class TrayController(QObject):
         self.s = session
         self.ctl = app_controller
         self.icon = QSystemTrayIcon(tray_icon("idle"))
-        self.icon.setToolTip("micscope")
+        self.icon.setToolTip("Mic Monitor")
         self.icon.activated.connect(self._activated)
         self.popup = TrayPopup(session, app_controller)
         self.menu = QMenu()
@@ -254,7 +254,7 @@ class TrayController(QObject):
 
     def _build_menu(self):
         self.menu.clear()
-        self.menu.addAction(QIcon.fromTheme("audio-input-microphone"), "Open micscope",
+        self.menu.addAction(QIcon.fromTheme("audio-input-microphone"), "Open Mic Monitor",
                             lambda: self.ctl.show_window("monitor"))
         self.menu.addAction(QIcon.fromTheme("media-record"), "Measure room or voice…",
                             lambda: self.ctl.show_window("measure"))
@@ -303,7 +303,7 @@ class TrayController(QObject):
     def update_state(self):
         s = self.s
         if not s.device:
-            self._set_icon("idle", "micscope — no capture device")
+            self._set_icon("idle", "Mic Monitor — no capture device")
             return
         if not (self.ctl.window_visible() or self.popup.isVisible()):
             s.refresh_controls()            # cheap: amixer only, no capture
@@ -312,10 +312,10 @@ class TrayController(QObject):
             self._notified_drift = drift
             if s.settings.get("auto_restore"):
                 s.restore_remembered()
-                self.icon.showMessage("micscope", f"Something moved the mic gain to index {drift[1]}; "
+                self.icon.showMessage("Mic Monitor", f"Something moved the mic gain to index {drift[1]}; "
                                       f"put it back to {drift[0]}.", QSystemTrayIcon.MessageIcon.Information, 6000)
             else:
-                self.icon.showMessage("micscope", f"Mic gain changed behind your back: index {drift[1]}, "
+                self.icon.showMessage("Mic Monitor", f"Mic gain changed behind your back: index {drift[1]}, "
                                       f"remembered {drift[0]}. Right-click the tray icon to restore.",
                                       QSystemTrayIcon.MessageIcon.Warning, 8000)
         elif not drift:
@@ -328,14 +328,14 @@ class TrayController(QObject):
         if db is not None:
             zone = zone_for_db(db)
             state = "drift" if s.drift() else ("safe" if zone in ("safe", "low") else zone)
-            tip = f"micscope — {s.device.description}\nAnalog gain {fmt_gain(db)} ({zone})"
+            tip = f"Mic Monitor — {s.device.description}\nAnalog gain {fmt_gain(db)} ({zone})"
             if s.drift():
                 tip += "\nGain has drifted from the remembered value"
         elif s.device.pw_percent is not None:
             state = "idle"
-            tip = f"micscope — {s.device.description}\nSoftware volume {s.device.pw_percent}%"
+            tip = f"Mic Monitor — {s.device.description}\nSoftware volume {s.device.pw_percent}%"
         else:
-            state, tip = "idle", f"micscope — {s.device.description}"
+            state, tip = "idle", f"Mic Monitor — {s.device.description}"
         self._set_icon(state, tip)
 
     def _set_icon(self, state, tip, level=None):
@@ -364,4 +364,4 @@ class TrayController(QObject):
             state = "low"
         else:
             state = "idle"
-        self._set_icon(state, f"micscope — {headline}\n{detail}", level)
+        self._set_icon(state, f"Mic Monitor — {headline}\n{detail}", level)

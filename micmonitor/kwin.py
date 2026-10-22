@@ -11,8 +11,8 @@ reload over D-Bus.
 import shutil
 import subprocess
 
-RULE_GROUP = "micscope-tray-popup"
-POPUP_TITLE = "micscope — tray"
+RULE_GROUP = "mic-monitor-tray-popup"
+POPUP_TITLE = "Mic Monitor — tray"
 MARGIN = 8
 
 
@@ -63,8 +63,8 @@ def install_rule(width=400, height=360):
     x = geo.x() + geo.width() - width - MARGIN
     y = geo.y() + geo.height() - height - MARGIN
     g = RULE_GROUP
-    _write(g, "Description", "micscope tray pop-up")
-    _write(g, "wmclass", "micscope")
+    _write(g, "Description", "Mic Monitor tray pop-up")
+    _write(g, "wmclass", "mic-monitor")
     _write(g, "wmclassmatch", 1)
     _write(g, "wmclasscomplete", "false", "bool")
     _write(g, "title", POPUP_TITLE)
@@ -85,19 +85,18 @@ def install_rule(width=400, height=360):
     return True, f"KWin rule installed: pop-up opens at {x},{y}."
 
 
-def remove_rule():
+def remove_rule(group=RULE_GROUP):
     if not available():
         return True, "No KWin rule to remove."
-    rules = [r for r in _read("General", "rules").split(",") if r and r != RULE_GROUP]
+    rules = [r for r in _read("General", "rules").split(",") if r and r != group]
     _write("General", "rules", ",".join(rules))
     _write("General", "count", len(rules))
-    subprocess.run(["kwriteconfig6", "--file", "kwinrulesrc", "--group", RULE_GROUP,
-                    "--key", "Description", "--delete"], capture_output=True)
+    _delete(group, "Description")
     # kwriteconfig6 cannot drop a whole group; clear every key we wrote.
     for key in ("wmclass", "wmclassmatch", "wmclasscomplete", "title", "titlematch",
                 "position", "positionrule", "above", "aboverule", "skiptaskbar",
                 "skiptaskbarrule", "skippager", "skippagerrule", "skipswitcher",
                 "skipswitcherrule"):
-        _delete(RULE_GROUP, key)
+        _delete(group, key)
     _reconfigure()
     return True, "KWin rule removed."

@@ -24,7 +24,7 @@ KEY_ENDPOINT = "https://openrouter.ai/api/v1/key"
 
 SYSTEM_PROMPT = """You are an audio engineer who sets up microphones for \
 speech recognition (dictation, ASR). You are given measurements taken by a \
-Linux tool called micscope: the device, its real analog gain in dB, and the \
+Linux tool called Mic Monitor: the device, its real analog gain in dB, and the \
 results of analysing a recording (room tone and/or a voice sample). \
 Optionally you also receive the recording itself.
 
@@ -64,7 +64,7 @@ def _post(url, payload, key, timeout=120):
         headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/danielrosehill/micscope",
+            "HTTP-Referer": "https://github.com/danielrosehill/Mic-Monitor",
             "X-Title": f"{APP} {VERSION}",
         },
         method="POST" if payload is not None else "GET",

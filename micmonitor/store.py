@@ -3,10 +3,10 @@ profiles, recorded samples, and app settings.
 
 Layout (XDG):
 
-    ~/.config/micscope/devices.json     remembered gain, presets, curve cache (core.py)
-    ~/.config/micscope/settings.json    app settings, incl. the OpenRouter key
-    ~/.local/share/micscope/history.db  SQLite: measurements, profiles
-    ~/.local/share/micscope/samples/    recorded room tone and voice, FLAC (or WAV)
+    ~/.config/mic-monitor/devices.json     remembered gain, presets, curve cache (core.py)
+    ~/.config/mic-monitor/settings.json    app settings, incl. the OpenRouter key
+    ~/.local/share/mic-monitor/history.db  SQLite: measurements, profiles
+    ~/.local/share/mic-monitor/samples/    recorded room tone and voice, FLAC (or WAV)
                                         plus a sox noise profile per room sample
 
 Samples are kept so a room's noise can later be used for cleanup:
@@ -22,9 +22,10 @@ import wave
 from datetime import datetime
 from pathlib import Path
 
+from . import APP
 from .core import CONFIG_DIR
 
-DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "micscope"
+DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / APP
 SAMPLES_DIR = DATA_DIR / "samples"
 DB_FILE = DATA_DIR / "history.db"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"

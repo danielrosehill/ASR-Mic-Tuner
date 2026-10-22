@@ -4,11 +4,11 @@ import os
 import shutil
 from pathlib import Path
 
-AUTOSTART = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "autostart" / "micscope.desktop"
+AUTOSTART = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "autostart" / "mic-monitor.desktop"
 
 ENTRY = """[Desktop Entry]
 Type=Application
-Name=micscope
+Name=Mic Monitor
 Comment=Microphone monitor for dictation, in the system tray
 Exec={exec} --tray
 Icon=audio-input-microphone
@@ -25,6 +25,6 @@ def enabled():
 def set_enabled(on):
     if on:
         AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
-        AUTOSTART.write_text(ENTRY.format(exec=shutil.which("micscope") or "micscope"))
+        AUTOSTART.write_text(ENTRY.format(exec=shutil.which("mic-monitor") or "mic-monitor"))
     else:
         AUTOSTART.unlink(missing_ok=True)

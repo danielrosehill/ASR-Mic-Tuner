@@ -1,4 +1,4 @@
-# micscope — specification
+# Mic Monitor — specification
 
 Status: **v0.2.0 implemented** (2026-10-22). Seeded 2026-07-30; v0.1 was a
 GTK3 single window. v0.2 is a Qt 6 rewrite for KDE Plasma with a tray, sample
@@ -58,7 +58,7 @@ the available meters looked fine.
 
 ## 3. Non-goals
 
-- **No audio processing, ever.** micscope inserts no filter, no virtual
+- **No audio processing, ever.** Mic Monitor inserts no filter, no virtual
   source, no AGC, no noise suppression. It observes, and it sets gain. The
   audio graph must be byte-identical before and after running it.
 - Not an equaliser and not a routing tool (`helvum`/`qpwgraph` already do
@@ -70,7 +70,7 @@ The sibling project `dictamic` took the opposite approach — inserting a WebRTC
 AGC/noise-suppression/AEC chain as a virtual source — and measurement showed
 raw audio at correct analog gain had a **9 dB lower noise floor than the full
 processing chain achieved** (−56.4 vs −46.9 dBFS). The processing was solving
-a problem that correct gain solves better. micscope exists to make correct
+a problem that correct gain solves better. Mic Monitor exists to make correct
 gain easy to see and set, which is the part that actually works.
 
 ## 4. Core mechanism
@@ -101,7 +101,7 @@ is wrong on the very machine it was measured on.
 
 Not all cards expose a `dBscale` TLV. When absent, fall back to probing
 min/mid/max (set, read, restore original) once at first run, cache the result
-in `~/.config/micscope/devices.json`, and label the curve as *probed* rather
+in `~/.config/mic-monitor/devices.json`, and label the curve as *probed* rather
 than *declared* in the UI.
 
 ### 4.2 Setting the gain
@@ -149,7 +149,7 @@ in §10.
   second, independent way to reach clipping.
 - Alongside, deliberately: **"PipeWire reports: 12% / −55.25 dB"**, explicitly
   labelled *not the analog gain*. Showing the discrepancy teaches the trap
-  instead of hiding it, and lets the user correlate what micscope says with
+  instead of hiding it, and lets the user correlate what Mic Monitor says with
   what every other tool says.
 
 ### 5.2 Level pane
@@ -208,8 +208,8 @@ resetting the analog gain to maximum twice in one session on the reference
 machine.
 
 - Offer an explicit **"remember this gain"** that writes the chosen index to
-  `~/.config/micscope/devices.json`.
-- Optional user-level systemd unit (`micscope-restore.service`,
+  `~/.config/mic-monitor/devices.json`.
+- Optional user-level systemd unit (`mic-monitor-restore.service`,
   `WantedBy=default.target`) that reapplies the saved index after
   wireplumber settles. Off by default; the GUI enables it.
 - Detect and surface drift: if the current index differs from the remembered
@@ -221,7 +221,7 @@ House convention, matching `dictamic`: a self-contained `build-deb.sh` that
 assembles a tree and calls `dpkg-deb --build --root-owner-group`.
 
 ```
-./build-deb.sh 0.1.0     # → dist/micscope_0.1.0_all.deb
+./build-deb.sh 0.1.0     # → dist/mic-monitor_0.1.0_all.deb
 ```
 
 Output goes to **`dist/`, not `build/`** — `build/` is excluded by the global
@@ -229,17 +229,17 @@ gitignore, so artefacts placed there cannot be committed.
 
 | Path | Content |
 |---|---|
-| `/usr/bin/micscope` | the app (mode 755) |
-| `/usr/share/applications/micscope.desktop` | menu entry |
-| `/usr/share/doc/micscope/` | README, spec |
+| `/usr/bin/mic-monitor` | the app (mode 755) |
+| `/usr/share/applications/mic-monitor.desktop` | menu entry |
+| `/usr/share/doc/Mic Monitor/` | README, spec |
 
 - `Architecture: all`, `Section: sound`
 - `Depends: python3, python3-gi, gir1.2-gtk-3.0, pulseaudio-utils, alsa-utils`
-- **No `conffiles`** and no `postinst` logic — micscope installs nothing into
+- **No `conffiles`** and no `postinst` logic — Mic Monitor installs nothing into
   `/etc` and requires no PipeWire restart. Deliberate contrast with dictamic.
 
-v0.2 layout: the Python package goes in `/usr/lib/micscope/micscope/`, with a
-wrapper at `/usr/bin/micscope`. `Depends: python3, python3-pyqt6, python3-numpy,
+v0.2 layout: the Python package goes in `/usr/lib/mic-monitor/micmonitor/`, with a
+wrapper at `/usr/bin/mic-monitor`. `Depends: python3, python3-pyqt6, python3-numpy,
 pulseaudio-utils, alsa-utils`. `Recommends: sox, ffmpeg, pipewire-bin,
 libkf6config-bin, qdbus-qt6`. Still no conffiles and no postinst. Qt 6 replaced
 GTK3 because the target desktop is Plasma (`docs/kde-integration.md`).
@@ -262,7 +262,7 @@ GTK3 because the target desktop is Plasma (`docs/kde-integration.md`).
 
 ## 9. Open questions
 
-- Should micscope offer to *disable* competing processing it detects
+- Should Mic Monitor offer to *disable* competing processing it detects
   (`asr_mic`, `easyeffects_source` in the graph), or only report it? Leaning
   report-only, per the no-side-effects goal.
 - `python3-alsaaudio` (packaged, 0.10.0) would replace `amixer` parsing with a
@@ -283,7 +283,7 @@ something on screen needs it.
   PipeWire software volume in 1% steps, labelled as digital. Software volume
   is never offered for a device that has an ALSA capture control.
 - **Measure**: room tone and voice samples, analysed per `docs/analysis.md`.
-  They're saved as FLAC under `~/.local/share/micscope/samples/`, with a sox
+  They're saved as FLAC under `~/.local/share/mic-monitor/samples/`, with a sox
   noise profile for each room sample.
 - **History**: SQLite (`measurements`, `profiles`). Every calibration,
   recording and logged reading is kept, with device, gain, location tag and

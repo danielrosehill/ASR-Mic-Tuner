@@ -1,4 +1,4 @@
-# micscope
+# Mic Monitor
 
 > *See what your microphone is really doing — tuned for dictation and speech recognition.*
 
@@ -47,50 +47,69 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 
 ## What it does not do
 
-micscope inserts **no** audio processing, no filter, no virtual source and no
+Mic Monitor inserts **no** audio processing, no filter, no virtual source and no
 AGC, and installs nothing into `/etc`. It observes, sets gain, and records only
 when you ask it to. The sibling project [`dictamic`](https://github.com/danielrosehill/dictamic)
 took the processing route. Measurement showed raw audio at *correct* gain had a
-**9 dB lower noise floor** than that whole chain, so micscope makes correct gain
+**9 dB lower noise floor** than that whole chain, so Mic Monitor makes correct gain
 easy instead.
 
 ## Install
 
+From the signed APT repository at `apps.danielrosehill.com/apt` (updates arrive with `sudo apt upgrade`):
+
 ```bash
-sudo apt install ./micscope_0.2.0_all.deb      # from the GitHub release
-micscope            # window + tray
-micscope --tray     # tray only (what "Start in the tray at login" runs)
+curl -fsSL https://apps.danielrosehill.com/apt/setup.sh | sudo sh -s -- mic-monitor
 ```
+
+If the repository is already set up on the machine:
+
+```bash
+sudo apt update && sudo apt install mic-monitor
+```
+
+Or install the `.deb` from the [latest release](https://github.com/danielrosehill/Mic-Monitor/releases/latest):
+
+```bash
+sudo apt install ./mic-monitor_*_all.deb
+```
+
+Then run `mic-monitor`, or `mic-monitor --tray` to start in the tray only (what "Start in the tray at login" runs).
+Tested on Ubuntu 26.04; it needs only archive packages (PyQt6, numpy), so 24.04 and later should work. It's built for KDE Plasma and works on any desktop with a StatusNotifierItem tray.
 
 Depends: `python3-pyqt6 python3-numpy pulseaudio-utils alsa-utils`.
 Recommends: `sox` (FLAC samples and noise profiles), `ffmpeg` (audio for AI),
 `pipewire-bin` (playback), `libkf6config-bin` and `qdbus-qt6` (KWin pop-up placement).
 
+**Formerly `micscope`** (v0.1–0.2). The `mic-monitor` package replaces it, and on first run it moves
+`~/.config/micscope` and `~/.local/share/micscope` to the new names and renames the KWin rule,
+autostart entry and login unit.
+
 ## Command line (scripts and agents)
 
 ```bash
-micscope --list [--json]                 # every source with real analog gain, presets, remembered gain
-micscope --measure room --seconds 15 --location "living room"   # records, analyses, logs; prints JSON
-micscope --measure voice --seconds 20
-micscope --history [--json]              # the measurement log
-micscope --restore [--delay 8]           # reapply remembered gain (used by the login unit)
+mic-monitor --list [--json]                 # every source with real analog gain, presets, remembered gain
+mic-monitor --measure room --seconds 15 --location "living room"   # records, analyses, logs; prints JSON
+mic-monitor --measure voice --seconds 20
+mic-monitor --history [--json]              # the measurement log
+mic-monitor --restore [--delay 8]           # reapply remembered gain (used by the login unit)
 ```
 
 ## Files
 
 | Path | Contents |
 |---|---|
-| `~/.config/micscope/devices.json` | remembered gain per device, named presets, probed-curve cache |
-| `~/.config/micscope/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
-| `~/.local/share/micscope/history.db` | SQLite: `measurements`, `profiles` |
-| `~/.local/share/micscope/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
-| `~/.config/kwinrulesrc` group `micscope-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |
+| `~/.config/mic-monitor/devices.json` | remembered gain per device, named presets, probed-curve cache |
+| `~/.config/mic-monitor/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
+| `~/.local/share/mic-monitor/history.db` | SQLite: `measurements`, `profiles` |
+| `~/.local/share/mic-monitor/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
+| `~/.config/kwinrulesrc` group `mic-monitor-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |
 
 ## Build
 
 ```bash
-./build-deb.sh            # version from micscope/__init__.py → dist/micscope_<v>_all.deb
-python3 -m micscope       # run from the source tree
+./build-deb.sh            # version from micmonitor/__init__.py → dist/mic-monitor_<v>_all.deb
+python3 -m micmonitor       # run from the source tree
 ```
 
 ## Docs

@@ -1,16 +1,16 @@
 [Desktop Entry]
 Type=Application
-Name=micscope
+Name=Mic Monitor
 GenericName=Microphone Monitor
 Comment=Microphone gain, level, noise and voice analysis for dictation
-Exec=micscope
+Exec=mic-monitor
 Icon=audio-input-microphone
 Categories=AudioVideo;Audio;Settings;Qt;KDE;
 Keywords=microphone;mic;gain;level;meter;clipping;dictation;noise;asr;speech;monitor;
-StartupWMClass=micscope
+StartupWMClass=mic-monitor
 Terminal=false
 Actions=Tray;
 
 [Desktop Action Tray]
 Name=Start in tray
-Exec=micscope --tray
+Exec=mic-monitor --tray

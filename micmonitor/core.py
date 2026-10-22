@@ -1,7 +1,7 @@
 """Toolkit-independent core: the ALSA gain curve, mixer controls, capture
 devices, saved settings, and the headless report / restore paths.
 
-Standing constraint (docs/spec.md §3): micscope never modifies the audio
+Standing constraint (docs/spec.md §3): Mic Monitor never modifies the audio
 graph. It runs `parec` to listen and `amixer` to read and set the analog gain.
 It loads no module, creates no node, and changes no default.
 """
@@ -20,7 +20,7 @@ from . import APP
 
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / APP
 DEVICES_FILE = CONFIG_DIR / "devices.json"
-UNIT_NAME = "micscope-restore.service"
+UNIT_NAME = "mic-monitor-restore.service"
 UNIT_FILE = (
     Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     / "systemd/user"
@@ -694,24 +694,24 @@ def restore_saved(delay=0.0):
     config = load_config()
     saved = config.get("devices", {})
     if not saved:
-        print("micscope: nothing saved")
+        print("mic-monitor: nothing saved")
         return 0
     devices = {d.name: d for d in list_devices()}
     applied = 0
     for name, entry in saved.items():
         device = devices.get(name)
         if device is None or not device.is_hardware:
-            print(f"micscope: {name} not present, skipped")
+            print(f"mic-monitor: {name} not present, skipped")
             continue
         control = pick_gain_control(read_controls(device.card))
         if control is None or control.numid != entry.get("numid"):
-            print(f"micscope: control moved on {name}, skipped")
+            print(f"mic-monitor: control moved on {name}, skipped")
             continue
         if control.index == entry["index"]:
-            print(f"micscope: {name} already at index {control.index}")
+            print(f"mic-monitor: {name} already at index {control.index}")
             continue
         if control.set_index(entry["index"]):
-            print(f"micscope: {name} set to index {entry['index']}")
+            print(f"mic-monitor: {name} set to index {entry['index']}")
             applied += 1
     return 0 if applied or saved else 1
 
@@ -725,8 +725,8 @@ def own_exec_path():
 
 
 UNIT_TEMPLATE = """[Unit]
-Description=Reapply the microphone analog gain saved by micscope
-Documentation=file:///usr/share/doc/micscope/spec.md
+Description=Reapply the microphone analog gain saved by Mic Monitor
+Documentation=file:///usr/share/doc/mic-monitor/spec.md
 After=pipewire.service wireplumber.service
 
 [Service]

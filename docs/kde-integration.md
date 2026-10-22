@@ -18,9 +18,9 @@ from v0.1, with `capture.py` moved to numpy.
 
 ## App id
 
-`QGuiApplication.setDesktopFileName("micscope")` sets the Wayland `app_id`.
-Plasma uses it to match `micscope.desktop` (icon, task grouping), and the KWin
-rule below matches on it (`wmclass=micscope`).
+`QGuiApplication.setDesktopFileName("mic-monitor")` sets the Wayland `app_id`.
+Plasma uses it to match `mic-monitor.desktop` (icon, task grouping), and the KWin
+rule below matches on it (`wmclass=mic-monitor`).
 
 ## Placing the tray pop-up on Wayland
 
@@ -32,19 +32,19 @@ Two facts about Wayland combine here:
    `QSystemTrayIcon.geometry()` is empty, and `QCursor.pos()` is stale over
    the panel.
 
-So the pop-up is a frameless `Qt.Tool` window titled exactly `micscope — tray`,
-and a **KWin window rule** places it. `micscope/kwin.py` writes the rule with
+So the pop-up is a frameless `Qt.Tool` window titled exactly `Mic Monitor — tray`,
+and a **KWin window rule** places it. `micmonitor/kwin.py` writes the rule with
 `kwriteconfig6` into `~/.config/kwinrulesrc`:
 
 ```ini
 [General]
-rules=micscope-tray-popup        # appended to any existing list; count kept in step
+rules=mic-monitor-tray-popup        # appended to any existing list; count kept in step
 
-[micscope-tray-popup]
-Description=micscope tray pop-up
-wmclass=micscope
+[mic-monitor-tray-popup]
+Description=Mic Monitor tray pop-up
+wmclass=mic-monitor
 wmclassmatch=1                   # exact
-title=micscope — tray
+title=Mic Monitor — tray
 titlematch=1                     # exact
 position=<x>,<y>                 # bottom-right of the primary screen's available area, 8 px margin
 positionrule=3                   # "apply initially": reapplied each time the window maps; still draggable
@@ -71,17 +71,17 @@ stay out of the user's workspace.
 ## The microphone-in-use indicator
 
 Plasma shows a microphone indicator whenever any client has a capture stream
-open. So micscope opens `parec` only while something on screen needs it: the
+open. So Mic Monitor opens `parec` only while something on screen needs it: the
 main window, the tray pop-up, or the opt-in "live level in tray icon".
 `Session.acquire/release` reference-counts those users. With the defaults, an
 idle tray polls only `amixer` every 4 s, for the gain zone and drift, and
-never shows micscope as recording.
+never shows Mic Monitor as recording.
 
 ## Single instance
 
-`app.py` listens on a `QLocalServer` named `micscope-<uid>`. A second launch
+`app.py` listens on a `QLocalServer` named `mic-monitor-<uid>`. A second launch
 connects, sends `show` (or `tray`), and exits. That's how the autostart entry
-(`~/.config/autostart/micscope.desktop`, `Exec=micscope --tray`) and a launcher
+(`~/.config/autostart/mic-monitor.desktop`, `Exec=mic-monitor --tray`) and a launcher
 click can coexist.
 
 ## Testing without touching the desktop
@@ -90,7 +90,7 @@ click can coexist.
 QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME=/tmp/x XDG_DATA_HOME=/tmp/x python3 script.py
 ```
 
-In the script, build `micscope.app.Controller(app, False)` and save
+In the script, build `micmonitor.app.Controller(app, False)` and save
 `window.grab()` per tab. The offscreen platform reports no system tray, so
 construct `TrayPopup` directly to render the pop-up. Capture still uses the real
 microphone through `parec`.

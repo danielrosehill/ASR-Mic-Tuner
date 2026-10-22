@@ -115,6 +115,10 @@ def main(argv=None):
                         help="seconds to wait before --restore, to let wireplumber settle")
     args = parser.parse_args(argv)
 
+    from .migrate import migrate
+    for note in migrate():
+        print(f"{APP}: migrated from micscope: {note}", file=sys.stderr)
+
     if args.list:
         if args.json:
             print(json.dumps(_devices_json(), indent=2))

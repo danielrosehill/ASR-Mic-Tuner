@@ -1,6 +1,6 @@
 """Qt application: single instance, window and tray lifecycle.
 
-A second `micscope` launch does not start a second process; it tells the
+A second `mic-monitor` launch does not start a second process; it tells the
 running one (over a QLocalSocket) to show its window, or — for `--tray` —
 to do nothing, so autostart and a menu launch can coexist.
 """
@@ -93,12 +93,12 @@ def run(start_in_tray=False):
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP)
-    app.setApplicationDisplayName("micscope")
+    app.setApplicationDisplayName("Mic Monitor")
     app.setApplicationVersion(VERSION)
     app.setOrganizationDomain("danielrosehill.com")
-    # Becomes the Wayland app id: Plasma matches it to micscope.desktop for the
+    # Becomes the Wayland app id: Plasma matches it to mic-monitor.desktop for the
     # icon and task grouping, and the KWin pop-up rule matches on it too.
-    QGuiApplication.setDesktopFileName("micscope")
+    QGuiApplication.setDesktopFileName("mic-monitor")
     app.setWindowIcon(QIcon.fromTheme("audio-input-microphone"))
     app.setQuitOnLastWindowClosed(False)
 

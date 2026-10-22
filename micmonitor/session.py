@@ -166,7 +166,7 @@ class Session(QObject):
         if not self.gain.set_index(index):
             self.status.emit("amixer refused the gain change")
             return False
-        # A change made in micscope is deliberate, so it becomes the
+        # A change made in Mic Monitor is deliberate, so it becomes the
         # remembered value; drift detection is for changes behind our back.
         if deliberate and self.remembered() is not None:
             self.remember_current()

@@ -211,7 +211,7 @@ class HistoryPage(QWidget):
             self.reload()
 
     def _export(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Export history", str(Path.home() / "micscope-history.json"),
+        path, _ = QFileDialog.getSaveFileName(self, "Export history", str(Path.home() / "mic-monitor-history.json"),
                                               "JSON (*.json)")
         if path:
             Path(path).write_text(json.dumps(self.s.store.export(), indent=2, default=str))
@@ -439,8 +439,8 @@ class SettingsPage(QWidget):
 
         traybox = QGroupBox("Tray and session")
         tl = QVBoxLayout(traybox)
-        self.tray_enabled = QCheckBox("Show micscope in the system tray")
-        self.close_to_tray = QCheckBox("Closing the window keeps micscope in the tray")
+        self.tray_enabled = QCheckBox("Show Mic Monitor in the system tray")
+        self.close_to_tray = QCheckBox("Closing the window keeps Mic Monitor in the tray")
         self.live = QCheckBox("Live level in the tray icon (keeps the microphone open — "
                               "Plasma will show it as in use)")
         self.pin = QCheckBox("Open the tray pop-up at the panel corner (adds a KWin window rule)")
