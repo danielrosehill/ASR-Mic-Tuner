@@ -2,6 +2,8 @@
 
 > *See what your microphone is really doing — tuned for dictation and speech recognition.*
 
+**Write-up:** [The Linux mic slider lies: Mic Monitor shows the real gain](https://blog.danielrosehill.com/posts/linux-microphone-gain-dictation-mic-monitor-kaq5pj)
+
 A KDE Plasma (Qt 6) microphone monitor that lives in the system tray. It shows
 the **true analog gain** of a capture device in dB, its **signal level** in
 dBFS against the band speech recognition wants, and **whether it is clipping**,
