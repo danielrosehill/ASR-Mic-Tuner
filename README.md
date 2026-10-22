@@ -9,7 +9,7 @@ counted in samples. You can step the gain one hardware index at a time. It also
 records room tone and voice samples, measures them, keeps a history per
 microphone and location, and can ask an AI model for a review.
 
-![status](https://img.shields.io/badge/status-v0.2.0-blue)
+![Monitor tab: analog gain in dB with zone colours, per-channel meters, live verdict, spectrum with the room profile overlaid](docs/screenshots/monitor.png)
 
 ## Why
 
@@ -37,6 +37,10 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 | **History** | Every measurement, with device, gain, location, notes, sample file and AI review. Filter by device or kind, play a sample, ask the AI, promote a measurement to a profile, or export everything as JSON. |
 | **Profiles** | **Gain presets** per microphone ("office", "living room"); the ★ preset is the remembered gain that Restore, the tray and the login unit reapply. **Room noise profiles**: the active one per device is the SNR reference and the spectrum overlay, and each has a "copy sox cleanup command" action. **Voice profiles** as well. |
 | **Settings** | OpenRouter key and model, an option to send the audio as well as the numbers, tray behaviour, start at login, auto-restore on drift, and the data folder. |
+
+| Tray pop-up | Room tone analysis |
+|---|---|
+| ![Tray pop-up](docs/screenshots/tray-popup.png) | ![Room tone result](docs/screenshots/room-tone.png) |
 
 **Tray** (Plasma StatusNotifierItem):
 - **Left-click** opens a pop-up with the device, a gain slider and ± buttons, a live meter, the verdict and preset choice. It listens only while it's open.
