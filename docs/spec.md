@@ -1,7 +1,9 @@
 # micscope — specification
 
-Status: **design, not yet implemented.** Seeded 2026-07-30.
-Target: v0.1.0, GTK3 desktop app, installed from a `.deb`.
+Status: **v0.2.0 implemented** (2026-10-22). Seeded 2026-07-30; v0.1 was a
+GTK3 single window. v0.2 is a Qt 6 rewrite for KDE Plasma with a tray, sample
+measurement, history, profiles and AI review. §1–§6 remain the core
+contract; §10 covers what v0.2 added. Installed from a `.deb`.
 
 ---
 
@@ -59,8 +61,9 @@ the available meters looked fine.
 - **No audio processing, ever.** micscope inserts no filter, no virtual
   source, no AGC, no noise suppression. It observes, and it sets gain. The
   audio graph must be byte-identical before and after running it.
-- Not a recorder, not an equaliser, not a routing tool (`helvum`/`qpwgraph`
-  already do routing).
+- Not an equaliser and not a routing tool (`helvum`/`qpwgraph` already do
+  routing). It records **only on explicit request** (Measure tab, `--measure`),
+  for analysis and for noise profiles; it is not a general recorder.
 - No system configuration files installed. Nothing in `/etc`.
 
 The sibling project `dictamic` took the opposite approach — inserting a WebRTC
@@ -127,7 +130,9 @@ parec --device=<source> --format=s16le --rate=48000 --channels=<native>
 
 ## 5. UI
 
-Single window, four panes, no tabs — the point is seeing all four facts at once.
+v0.1 had a single window with four panes. In v0.2 the four panes are the
+**Monitor** tab, which still shows all four facts at once; the other tabs are
+in §10.
 
 ### 5.1 Gain pane
 
@@ -233,8 +238,11 @@ gitignore, so artefacts placed there cannot be committed.
 - **No `conffiles`** and no `postinst` logic — micscope installs nothing into
   `/etc` and requires no PipeWire restart. Deliberate contrast with dictamic.
 
-GTK3 rather than GTK4/libadwaita, to match the sibling app and reuse an
-already-present dependency set. Revisit if the app outgrows it.
+v0.2 layout: the Python package goes in `/usr/lib/micscope/micscope/`, with a
+wrapper at `/usr/bin/micscope`. `Depends: python3, python3-pyqt6, python3-numpy,
+pulseaudio-utils, alsa-utils`. `Recommends: sox, ffmpeg, pipewire-bin,
+libkf6config-bin, qdbus-qt6`. Still no conffiles and no postinst. Qt 6 replaced
+GTK3 because the target desktop is Plasma (`docs/kde-integration.md`).
 
 ## 8. Acceptance criteria
 
@@ -260,5 +268,37 @@ already-present dependency set. Revisit if the app outgrows it.
 - `python3-alsaaudio` (packaged, 0.10.0) would replace `amixer` parsing with a
   real binding. Cleaner, but adds a dependency and the `amixer` commands above
   are already proven. Defer to implementation.
-- Is a tray/indicator mode worth it for drift warnings, or does that
-  re-create dictamic's mostly-useless monitor GUI?
+- ~~Is a tray/indicator mode worth it?~~ Resolved in v0.2: yes, and it never
+  opens the mic unless asked to (see `docs/kde-integration.md`). An idle tray
+  polls `amixer` only, and is useful mainly for drift notifications.
+
+
+## 10. v0.2 additions
+
+All of these keep §3. No processing is inserted, and capture runs only while
+something on screen needs it.
+
+- **Gain stepping**: − / + buttons move one hardware index. On devices with
+  no analog control (Bluetooth, virtual nodes), the same control drives
+  PipeWire software volume in 1% steps, labelled as digital. Software volume
+  is never offered for a device that has an ALSA capture control.
+- **Measure**: room tone and voice samples, analysed per `docs/analysis.md`.
+  They're saved as FLAC under `~/.local/share/micscope/samples/`, with a sox
+  noise profile for each room sample.
+- **History**: SQLite (`measurements`, `profiles`). Every calibration,
+  recording and logged reading is kept, with device, gain, location tag and
+  notes.
+- **Profiles**: named gain presets per device in `devices.json` under
+  `presets`. The remembered gain (`devices`) is the ★ default. Room and voice
+  profiles point at measurements. The active room profile per device is the
+  SNR reference and the spectrum overlay.
+- **AI review**: OpenRouter chat completions with the measured JSON, and
+  optionally a 16 kHz mono MP3 of the sample (off by default). Default model
+  `google/gemini-3.8-flash`, which handles both text and audio. The reply is
+  structured JSON stored with the measurement. Verified 2026-10-22: one room
+  review cost $0.0056.
+- **Tray**: zone-coloured icon, drift notification (optional auto-restore),
+  and a left-click pop-up placed by a KWin rule. Optional start-in-tray at
+  login through XDG autostart.
+- **CLI for agents**: `--list --json`, `--measure room|voice`,
+  `--history --json`.

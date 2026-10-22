@@ -1,78 +1,101 @@
 # micscope
 
-> *See what your microphone is really doing.*
+> *See what your microphone is really doing — tuned for dictation and speech recognition.*
 
-A single window showing the **true analog gain** of a capture device in dB, its
-**signal level** in dBFS with peak hold, and **whether it is clipping** —
-counted in samples, not guessed from an indicator light. Set the gain in dB
-instead of as a percentage of an opaque curve.
+A KDE Plasma (Qt 6) microphone monitor that lives in the system tray. It shows
+the **true analog gain** of a capture device in dB, its **signal level** in
+dBFS against the band speech recognition wants, and **whether it is clipping**,
+counted in samples. You can step the gain one hardware index at a time. It also
+records room tone and voice samples, measures them, keeps a history per
+microphone and location, and can ask an AI model for a review.
 
-**Status: specified, not yet implemented.** See [`docs/spec.md`](docs/spec.md).
+![status](https://img.shields.io/badge/status-v0.2.0-blue)
 
 ## Why
 
-Every microphone GUI on Ubuntu misreports gain, because PipeWire/PulseAudio
-volume is not the analog preamp gain and the mapping between them is neither
-linear nor lossless. On the reference machine the two readings, taken at the
-same instant, differ by **60 dB**:
+Every microphone GUI on Linux misreports gain, because PipeWire/PulseAudio
+volume is not the analog preamp gain, and the mapping between the two is
+neither linear nor lossless. On the reference laptop (Realtek ALC257) the two
+readings, taken at the same instant, differed by **60 dB**:
 
 | Reported by | Value |
 |---|---|
-| `pactl` / pavucontrol / GNOME Sound | 12% / −55.25 dB |
+| `pactl` / pavucontrol / Plasma audio applet | 12% / −55.25 dB |
 | ALSA `Capture` control (the real preamp) | index 29/63 / **+4.50 dB** |
 
-Worse, the whole usable analog range is squeezed into `pactl` 5%–35%, and
-anything above 35% is pinned at maximum boost. A slider sitting a third of the
-way along looks conservative and is in fact flat out — room noise reaches
-−11 dBFS and speech saturates the ADC. That damage is analog, so **no filter,
-AGC or noise suppressor downstream can repair it**; speech recognition accuracy
-collapses while the microphone still appears to work fine.
+The whole usable analog range is squeezed into `pactl` 5%–35%. Anything above
+35% is pinned at maximum boost. Clipping at the preamp is analog damage, so **no
+filter, AGC or noise suppressor downstream can repair it**. Full measurements
+are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 
-The full measured curve, the derivation, and the effect on noise floor are in
-[`docs/gain-mapping.md`](docs/gain-mapping.md).
+## What it does
+
+| Tab | What's there |
+|---|---|
+| **Monitor** | The analog gain in dB, colour-zoned by the device's own curve, with − / + buttons that move one hardware step (0.75 dB on HDA). Per-channel meters with peak hold and the −18…−10 dBFS target band, and a live verdict ("too loud — needs −6 dB", with a **Fix it** button). It also counts clipped samples and runs, shows DC offset, channel balance and an estimated speech-to-noise ratio, and has a live spectrum with the active room profile overlaid. Calibration comes in three lengths, Quick, Standard and Thorough (3+8 s, 5+15 s, 10+30 s), and **Log reading** saves the current state to History. |
+| **Measure** | **Room tone** (5–120 s): noise floor (p10, RMS, A-weighted), stationarity, transients, rumble, speech-band and hiss energy, mains hum (50/60 Hz plus harmonics), spectral flatness, 1/3-octave bands, and a sox noise profile for later cleanup. **Voice sample** (10–120 s, read the passage shown): speech peak and RMS, SNR against the active room profile, crest factor, dynamic range, pitch (F0) median and range, spectral centroid and tilt, bandwidth (it catches Bluetooth HFP narrowband), rumble, presence, sibilance, plosive pops and channel imbalance. All of that feeds an **ASR readiness score** from 0 to 100 with named deductions, plus a suggested gain. |
+| **History** | Every measurement, with device, gain, location, notes, sample file and AI review. Filter by device or kind, play a sample, ask the AI, promote a measurement to a profile, or export everything as JSON. |
+| **Profiles** | **Gain presets** per microphone ("office", "living room"); the ★ preset is the remembered gain that Restore, the tray and the login unit reapply. **Room noise profiles**: the active one per device is the SNR reference and the spectrum overlay, and each has a "copy sox cleanup command" action. **Voice profiles** as well. |
+| **Settings** | OpenRouter key and model, an option to send the audio as well as the numbers, tray behaviour, start at login, auto-restore on drift, and the data folder. |
+
+**Tray** (Plasma StatusNotifierItem):
+- **Left-click** opens a pop-up with the device, a gain slider and ± buttons, a live meter, the verdict and preset choice. It listens only while it's open.
+- **Middle-click** opens the main window. **Right-click** opens a menu with presets, Restore remembered gain and Quit.
+- The icon dot shows the gain zone. It turns amber with "!" and sends a notification when **something else moves your gain**. wireplumber does this, and it was seen resetting the preamp to maximum.
+
+**Microphones with no analog control** (Bluetooth headsets, processed virtual sources) fall back to PipeWire software volume in 1% steps, clearly labelled as digital.
 
 ## What it does not do
 
-micscope inserts **no** processing — no filter, no virtual source, no AGC, no
-noise suppression — and installs nothing into `/etc`. The audio graph is
-byte-identical before and after running it. It observes, and it sets gain.
-
-The sibling project [`dictamic`](../dictamic) took the other approach, adding a
-WebRTC AGC/noise-suppression chain as a virtual source. Measurement showed raw
-audio at *correct* analog gain had a **9 dB lower noise floor than that entire
-chain achieved** while fighting bad gain. Correct gain beats processing around
-bad gain, so micscope makes correct gain easy to see and set.
-
-## Planned features
-
-- Gain slider bound to the ALSA control index, labelled in dB, with safe /
-  caution / danger zones derived from the device's own curve
-- Per-channel dBFS meters with peak hold and a −18…−10 dBFS target band
-- Clipped-sample and clipped-**run** counters (runs, not isolated peaks,
-  indicate real saturation)
-- Calibration assistant: measure silence, measure speech, recommend and apply
-  a gain that puts peaks at −12 dBFS with verified headroom
-- Detection of processed/virtual sources, which have no analog gain at all
-- Drift detection, because wireplumber will overwrite your setting
+micscope inserts **no** audio processing, no filter, no virtual source and no
+AGC, and installs nothing into `/etc`. It observes, sets gain, and records only
+when you ask it to. The sibling project [`dictamic`](https://github.com/danielrosehill/dictamic)
+took the processing route. Measurement showed raw audio at *correct* gain had a
+**9 dB lower noise floor** than that whole chain, so micscope makes correct gain
+easy instead.
 
 ## Install
 
 ```bash
-sudo apt install ./dist/micscope_*.deb
+sudo apt install ./micscope_0.2.0_all.deb      # from the GitHub release
+micscope            # window + tray
+micscope --tray     # tray only (what "Start in the tray at login" runs)
 ```
+
+Depends: `python3-pyqt6 python3-numpy pulseaudio-utils alsa-utils`.
+Recommends: `sox` (FLAC samples and noise profiles), `ffmpeg` (audio for AI),
+`pipewire-bin` (playback), `libkf6config-bin` and `qdbus-qt6` (KWin pop-up placement).
+
+## Command line (scripts and agents)
+
+```bash
+micscope --list [--json]                 # every source with real analog gain, presets, remembered gain
+micscope --measure room --seconds 15 --location "living room"   # records, analyses, logs; prints JSON
+micscope --measure voice --seconds 20
+micscope --history [--json]              # the measurement log
+micscope --restore [--delay 8]           # reapply remembered gain (used by the login unit)
+```
+
+## Files
+
+| Path | Contents |
+|---|---|
+| `~/.config/micscope/devices.json` | remembered gain per device, named presets, probed-curve cache |
+| `~/.config/micscope/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
+| `~/.local/share/micscope/history.db` | SQLite: `measurements`, `profiles` |
+| `~/.local/share/micscope/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
+| `~/.config/kwinrulesrc` group `micscope-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |
 
 ## Build
 
 ```bash
-./build-deb.sh 0.1.0        # → dist/micscope_0.1.0_all.deb
+./build-deb.sh            # version from micscope/__init__.py → dist/micscope_<v>_all.deb
+python3 -m micscope       # run from the source tree
 ```
 
-## Meanwhile, without this tool
+## Docs
 
-```bash
-alsamixer -c 1              # F4 for capture view — honest gain in dB
-amixer -c 1 sget Capture    # same, scriptable
-```
-
-Use Audacity's recording meter for dBFS and clipping. Avoid pavucontrol and
-GNOME Sound for *setting* mic gain, for the reason above.
+- [`docs/spec.md`](docs/spec.md): design, constraints, acceptance criteria
+- [`docs/gain-mapping.md`](docs/gain-mapping.md): the measured pactl ↔ ALSA mapping
+- [`docs/analysis.md`](docs/analysis.md): what every metric means and the thresholds behind the findings and score
+- [`docs/kde-integration.md`](docs/kde-integration.md): tray, pop-up placement on Wayland, and the microphone-in-use indicator

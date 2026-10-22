@@ -1,9 +1,16 @@
 [Desktop Entry]
 Type=Application
 Name=micscope
-Comment=Microphone gain, level and clipping meter — shows true analog gain in dB
+GenericName=Microphone Monitor
+Comment=Microphone gain, level, noise and voice analysis for dictation
 Exec=micscope
 Icon=audio-input-microphone
-Categories=AudioVideo;Audio;Settings;
-Keywords=microphone;mic;gain;level;meter;clipping;dictation;
+Categories=AudioVideo;Audio;Settings;Qt;KDE;
+Keywords=microphone;mic;gain;level;meter;clipping;dictation;noise;asr;speech;monitor;
+StartupWMClass=micscope
 Terminal=false
+Actions=Tray;
+
+[Desktop Action Tray]
+Name=Start in tray
+Exec=micscope --tray
