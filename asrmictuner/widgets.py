@@ -416,9 +416,9 @@ class ScoreBadge(QWidget):
 # None of them uses a round status dot: a red dot reads as "recording" and
 # collides with other tray indicators. The status colour tints the style's
 # main element instead; with a live level, that element fills from the bottom.
-TRAY_STYLES = (("popfilter", "Pop filter"), ("studio", "Studio mic"),
-               ("wave", "Speech wave"), ("headset", "Headset"))
-TRAY_STYLE_DEFAULT = "popfilter"
+TRAY_STYLES = (("wave", "Speech wave"), ("popfilter", "Pop filter"),
+               ("studio", "Studio mic"), ("headset", "Headset"))
+TRAY_STYLE_DEFAULT = "wave"
 C_TRAY_FG = QColor(225, 225, 225)
 
 

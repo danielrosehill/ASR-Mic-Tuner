@@ -470,3 +470,10 @@ and user unit), `fxpage.py` (the tab). Reference: `docs/effects.md`.
 - Checked offscreen at 64 and 22 px for all styles and states, and by
   switching style from the tray menu and from Settings in an offscreen
   session (each updated the other and the icon).
+
+## 17. v2.3 (2026-10-27)
+
+- `TRAY_STYLE_DEFAULT` is now `wave` (Speech wave), listed first; the owner
+  picked it as the nicest after seeing all four in the panel. Anyone who never
+  chose a style (no `tray_icon_style` in settings) moves to it; an explicit
+  choice is kept.
