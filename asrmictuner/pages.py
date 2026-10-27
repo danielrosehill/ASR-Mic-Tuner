@@ -266,12 +266,13 @@ class ProfilesPage(QWidget):
         rl.addLayout(row)
         root.addWidget(rooms)
 
-        voices = QGroupBox("Voice profiles")
+        voices = QGroupBox("Speaker profiles (a mic test of one person on one microphone)")
         vl = QVBoxLayout(voices)
         self.voice_table = _table(["Name", "Device", "Created", "Gain", "Speech peak", "SNR", "F0", "Score"])
         vl.addWidget(self.voice_table)
         row = QHBoxLayout()
         for label, fn in (("Play", lambda: self._play(self.voice_table)),
+                          ("Build personal chain", self._personal_chain),
                           ("Delete", lambda: self._delete(self.voice_table))):
             b = QPushButton(label)
             b.clicked.connect(fn)
@@ -363,6 +364,17 @@ class ProfilesPage(QWidget):
         if not rows:
             return None
         return self.s.store.profile(table.item(rows[0].row(), 0).data(Qt.ItemDataRole.UserRole))
+
+    def _personal_chain(self):
+        p = self._selected_profile(self.voice_table)
+        if not p:
+            return
+        from .effects import personal_chain
+        room = None
+        if self.s.device and p["device"] == self.s.device.name:
+            room = (self.s.active_room_profile() or {}).get("metrics")
+        chain, notes = personal_chain(p.get("metrics") or {}, room)
+        self.s.open_chain.emit(chain, f"ASR Personal ({p['name']})", notes)
 
     def _set_active(self):
         p = self._selected_profile(self.room_table)
@@ -459,8 +471,20 @@ class SettingsPage(QWidget):
         tl.addWidget(self.autostart)
         root.addWidget(traybox)
 
-        quietbox = QGroupBox("Quiet-mic alert")
+        quietbox = QGroupBox("While you dictate")
         ql = QFormLayout(quietbox)
+        self.autogain = QCheckBox("ASR auto gain: adjust the analog gain slowly towards the target")
+        self.autogain.setToolTip("Judges 30 s of recording at a time, moves at most 3 dB, only in pauses, "
+                                 "and never above the ceiling. Steps down at once on clipping.")
+        self.autogain.setChecked(bool(st.get("asr_autogain", True)))
+        self.autogain.toggled.connect(lambda on: self._set("asr_autogain", on))
+        ql.addRow("", self.autogain)
+        self.ceiling = QSpinBox()
+        self.ceiling.setRange(0, 40)
+        self.ceiling.setSuffix(" dB analog gain")
+        self.ceiling.setValue(int(st.get("asr_autogain_max_db", 15)))
+        self.ceiling.valueChanged.connect(lambda v: self._set("asr_autogain_max_db", v))
+        ql.addRow("Auto gain ceiling", self.ceiling)
         self.quiet = QCheckBox("Notify me when dictation runs too quiet")
         self.quiet.setChecked(bool(st.get("quiet_alert", True)))
         self.quiet.toggled.connect(lambda on: self._set("quiet_alert", on))
@@ -478,8 +502,9 @@ class SettingsPage(QWidget):
         self.quiet_margin.valueChanged.connect(lambda v: self._set("quiet_margin_db", v))
         ql.addRow("Alert at", self.quiet_margin)
         ql.addRow(wrap_label(
-            "<small>Listens only while another application is recording from this microphone, and counts "
-            "only speech, so pauses and silence never trigger it. At most one alert per half hour.</small>"))
+            "<small>Both listen only while another application is recording from this microphone, and count "
+            "only speech, so pauses and silence never trigger them. With auto gain on, the alert fires only "
+            "once auto gain has reached its ceiling. At most one alert per half hour.</small>"))
         self.quiet_state = wrap_label()
         ql.addRow("Now", self.quiet_state)
         if self.watch is not None:
@@ -508,7 +533,10 @@ class SettingsPage(QWidget):
         self.s.save_settings()
 
     def _quiet_status(self):
-        self.quiet_state.setText(f"<small>{esc(self.watch.status())}</small>")
+        text = esc(self.watch.status())
+        if self.watch.adjustments:
+            text += "<br>" + "<br>".join(f"{esc(t)} {esc(a)}" for t, a in self.watch.adjustments)
+        self.quiet_state.setText(f"<small>{text}</small>")
 
     def showEvent(self, event):
         super().showEvent(event)

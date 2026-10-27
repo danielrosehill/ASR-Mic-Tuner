@@ -27,6 +27,9 @@ Turn it on in **ASR Effects → ASR Mic → Create ASR Mic**. Code: `asrmictuner
   the raw mic, so a broken chain shows up as a missing input instead of silently
   unprocessed audio. What your app does when its chosen input disappears (usually it
   falls back to the default) is up to the app.
+- **Pause** (ASR Effects) or **ASR Mic running** (tray menu) stops the unit for now,
+  for a call for example. It stays enabled, so it starts again at the next login, or
+  when you resume it.
 - Removing it (untick the box) disables and deletes the unit. Nothing else is touched.
 
 Why a supervisor: `pw-loopback` exits with status 0 when its target disappears, and

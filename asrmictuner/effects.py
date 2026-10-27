@@ -116,14 +116,17 @@ EFFECTS = {
     },
     "autogain": {
         "name": "Auto gain",
-        "blurb": "Evens out loudness towards a target (LUFS). Fix the analog gain first: this cannot undo clipping.",
+        "blurb": "Evens out loudness towards a target (LUFS). History 30 s here, so it follows your level over "
+                 "half a minute instead of riding every word and pumping up the room in pauses. Fix the analog "
+                 "gain first: this cannot undo clipping. (The Settings tab's ASR auto gain moves the analog gain "
+                 "itself, which is gentler still.)",
         "params": [
             ("target", "Target", "float", -100, 0, -23, "LUFS"),
             ("silence-threshold", "Silence threshold", "float", -100, 0, -70, "dB"),
             ("maximum-history", "History", "int", 6, 3600, 15, "s"),
             ("reference", "Reference", AUTOGAIN_REFS, None, None, "Geometric Mean (MSI)", ""),
         ],
-        "start": {"target": -20.0, "silence-threshold": -60.0, "maximum-history": 15},
+        "start": {"target": -20.0, "silence-threshold": -60.0, "maximum-history": 30},
     },
     "compressor": {
         "name": "Compressor",
@@ -203,6 +206,56 @@ TEMPLATES = [
     ("None", "No effects: a pass-through preset. Bind it to a mic that should reach apps untouched.",
      []),
 ]
+
+
+def personal_chain(v, room=None):
+    """A chain fitted to one speaker on one microphone, from a mic test's
+    metrics (analysis.analyse_voice) and optionally a room profile's.
+
+    Plain DSP, no neural denoiser: it trims what lies outside this voice and
+    holds the level, which is what ASR benefits from most reliably. Returns
+    (chain, notes), one note per decision, for the user to read.
+    """
+    chain, notes = [], []
+    f0_low = v.get("f0_p10_hz")
+    if f0_low:
+        hp = int(max(50, min(150, 5 * round(f0_low * 0.7 / 5))))
+        notes.append(f"High-pass {hp} Hz: 30% under the lowest pitch you used ({f0_low:.0f} Hz), "
+                     "so nothing of your voice is cut, but rumble and desk thumps are.")
+    else:
+        hp = 80
+        notes.append("High-pass 80 Hz: no reliable pitch in this sample, so the safe default.")
+    if (v.get("low_vs_body_db") or -99) > -6:
+        notes.append("Your sample had strong low-frequency energy (rumble or proximity), which the high-pass removes.")
+    chain.append(new_entry("filter", chain, {"frequency": float(hp), "slope": "x2"}))
+
+    bw = v.get("bandwidth_hz")
+    if bw and bw >= 8500:
+        chain.append(new_entry("filter", chain, {"type": "Low-pass", "frequency": 8000.0, "slope": "x2"}))
+        notes.append("Low-pass 8 kHz: most recognisers work at 16 kHz and discard everything above 8 kHz; "
+                     "cutting it here drops hiss before the auto gain can react to it.")
+    elif bw:
+        notes.append(f"No low-pass: this mic already stops near {bw / 1000:.1f} kHz.")
+
+    snr = v.get("snr_db")
+    noise = (room or {}).get("noise_floor_p10_dbfs", v.get("noise_reference_dbfs"))
+    speech = v.get("speech_rms_dbfs")
+    if snr is not None and noise is not None and speech is not None and snr >= 20:
+        threshold = round(min(noise + 12, speech - 6))
+        chain.append(new_entry("gate", chain, {"curve-threshold": float(threshold), "reduction": -12.0}))
+        notes.append(f"Gentle gate at {threshold} dB (room {noise:.0f}, your speech {speech:.0f}): "
+                     "turns the room down 12 dB between phrases.")
+    elif snr is not None:
+        notes.append(f"No gate: signal-to-noise is only {snr:.0f} dB, and a gate would chop quiet words.")
+
+    silence = max(-80.0, min(-30.0, round((noise if noise is not None else -66) + 6)))
+    chain.append(new_entry("autogain", chain, {"silence-threshold": float(silence)}))
+    notes.append(f"Auto gain to −20 LUFS over 30 s, ignoring anything under {silence:.0f} dB so pauses "
+                 "don't pump the room up.")
+    chain.append(new_entry("limiter", chain))
+    notes.append("Limiter at −3 dB so nothing after the gain clips.")
+    notes.append("No neural denoiser: add RNNoise or DeepFilterNet under Customise if the room needs it.")
+    return chain, notes
 
 
 def kind_of(instance_id):

@@ -100,6 +100,8 @@ def state():
     """One line for the UI."""
     if not enabled():
         return "off"
+    if not running():
+        return "paused"
     if present():
         return "active"
     return "waiting for EasyEffects" if not upstream_present() else "starting"
@@ -107,6 +109,17 @@ def state():
 
 def enabled():
     return UNIT_PATH.exists() and run(["systemctl", "--user", "is-enabled", UNIT_NAME]).strip() == "enabled"
+
+
+def running():
+    return run(["systemctl", "--user", "is-active", UNIT_NAME]).strip() == "active"
+
+
+def set_running(on):
+    """Start or stop for now, leaving the at-login setting alone: for a call
+    where you want ASR Mic out of the device list without turning it off."""
+    run(["systemctl", "--user", "start" if on else "stop", UNIT_NAME])
+    return running() == on
 
 
 def present():

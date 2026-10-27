@@ -68,6 +68,11 @@ class EffectsPage(QWidget):
         self.asr_mic = QCheckBox("Create ASR Mic")
         self.asr_mic.toggled.connect(self._asr_mic_toggled)
         arow.addWidget(self.asr_mic)
+        self.asr_mic_pause = QPushButton("Pause")
+        self.asr_mic_pause.setToolTip("Stop ASR Mic for now (a call, say). It starts again at login, "
+                                      "or here, or from the tray menu.")
+        self.asr_mic_pause.clicked.connect(self._asr_mic_pause)
+        arow.addWidget(self.asr_mic_pause)
         self.asr_mic_state = QLabel()
         arow.addWidget(self.asr_mic_state, 1)
         al.addLayout(arow)
@@ -98,6 +103,7 @@ class EffectsPage(QWidget):
 
         # -- chain editor, folded away until asked for --
         editbox = QGroupBox("Customise the chain")
+        self.editbox = editbox
         editbox.setCheckable(True)
         editbox.setChecked(False)
         outer = QVBoxLayout(editbox)
@@ -172,6 +178,9 @@ class EffectsPage(QWidget):
 
         self.summary = wrap_label()
         el.addWidget(self.summary)
+        self.chain_notes = wrap_label()
+        self.chain_notes.hide()
+        el.addWidget(self.chain_notes)
         save_row = QHBoxLayout()
         save_row.addWidget(QLabel("Save as"))
         self.name = QLineEdit()
@@ -321,8 +330,16 @@ class EffectsPage(QWidget):
         self.asr_mic.setChecked(on)
         self.asr_mic.blockSignals(False)
         state = asrmic.state()
+        self.asr_mic_pause.setVisible(on)
+        self.asr_mic_pause.setText("Resume" if state == "paused" else "Pause")
         colour = {"active": "#2ea44f", "off": "#888"}.get(state, "#b07d00")
         self.asr_mic_state.setText(f"<small><span style='color:{colour}'>{esc(state.capitalize())}</span></small>")
+
+    def _asr_mic_pause(self):
+        resume = asrmic.state() == "paused"
+        asrmic.set_running(resume)
+        self.s.status.emit("ASR Mic resumed." if resume else "ASR Mic paused until login or Resume.")
+        QTimer.singleShot(1500, self._asr_mic_status)
 
     def _asr_mic_toggled(self, on):
         ok, message = asrmic.set_enabled(on)
@@ -341,6 +358,7 @@ class EffectsPage(QWidget):
 
     # -- the chain --
     def _open_preset(self):
+        self.chain_notes.hide()
         name = self.preset.currentText()
         if name == NEW_PRESET:
             self.chain, self.raw = [], None
@@ -354,7 +372,22 @@ class EffectsPage(QWidget):
             self.name.setText(name)
         self._render_chain()
 
+    def load_chain(self, chain, name, notes=None):
+        """Open a chain built elsewhere (a personal chain from a mic test) for
+        review: nothing is saved until the user presses Save."""
+        self.editbox.setChecked(True)
+        self.preset.setCurrentText(NEW_PRESET)
+        self.chain, self.raw = chain, None
+        self.name.setText(name)
+        self._render_chain(select=0)
+        if notes:
+            self.chain_notes.setText("<small><b>Why this chain:</b><ul>" +
+                                     "".join(f"<li>{esc(n)}</li>" for n in notes) + "</ul>Review, then "
+                                     "<b>Save and load</b>, and bind it to this mic below.</small>")
+            self.chain_notes.show()
+
     def _use_template(self):
+        self.chain_notes.hide()
         name = self.template.currentText()
         if self.chain and QMessageBox.question(
                 self, "Replace chain", f"Replace the current chain with “{name}”?") != QMessageBox.StandardButton.Yes:

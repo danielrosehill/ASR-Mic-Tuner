@@ -363,3 +363,35 @@ something on screen needs it.
   this is the only node ASR Mic Tuner creates. It carries no processing of its own,
   exists only while the user has turned it on, and is removed with its unit.
 
+## 13. v1.1 additions (2026-10-27)
+
+- **ASR auto gain** (`watch.py`, setting `asr_autogain`, default on; ceiling
+  `asr_autogain_max_db`, default 15 dB = `ZONE_CAUTION_HI`). It runs on the same
+  speech-gated blocks as the quiet alert, only while another app records. It needs
+  30 s of recording and ≥ 8 s of speech per decision, uses the p95 block peak, has a
+  ±2 dB dead band around −18…−10 dBFS, steps ≤ 3 dB toward −12 dBFS, and acts only
+  when the last 300 ms are below the speech gate. A new clipped run means −3 dB at
+  the next pause. Steps go through `Session.set_index(deliberate=True)`, so the
+  remembered gain follows and drift detection stays quiet. Software-volume devices
+  step their percentage (cubic, ceiling 100 %). Simulated 2026-10-27: a −32 dBFS
+  speaker went up 3 dB per 30 s to +12 dB; −14 and −19 dBFS speakers were left
+  alone; a −45 dBFS speaker stopped at the +15 dB ceiling and the quiet alert
+  then fired; −6 dBFS stepped down twice; one clip stepped down once.
+  It has not yet been checked during real dictation.
+- **ASR Mic pause**: `asrmic.set_running()` starts or stops the unit and leaves
+  it enabled. It is in the tray menu ("ASR Mic running") and in ASR Effects ("Pause").
+- **Speaker profiles and personal chains**: voice profiles are now called
+  speaker profiles (one person on one microphone). `effects.personal_chain()`
+  builds a plain-DSP chain from a mic test (and the active room profile if
+  any). The high-pass is at 0.7 × F0 p10, clamped to 50–150 Hz and rounded to 5 Hz.
+  A low-pass at 8 kHz is added when the mic's bandwidth reaches 8.5 kHz. A gate at
+  min(noise + 12, speech RMS − 6) dB with −12 dB reduction is added only if
+  SNR ≥ 20 dB. Auto gain uses −20 LUFS, a 30 s history and a silence threshold of
+  noise + 6 dB, clamped to −80…−30. A −3 dB limiter goes last. Each decision comes
+  with a sentence of reasoning, shown in ASR Effects, where the chain opens for
+  review. Nothing is saved until the user saves it. Verified 2026-10-27: a
+  generated personal chain (two `filter` instances, gate, autogain, limiter)
+  loaded in EasyEffects 8.3.0 and linked in order.
+- The EasyEffects Auto gain library entry now starts with a 30 s history
+  (`maximum-history`, EasyEffects default 15 s).
+

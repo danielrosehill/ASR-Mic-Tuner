@@ -29,6 +29,7 @@ class Session(QObject):
     profiles_changed = pyqtSignal()
     settings_changed = pyqtSignal()
     status = pyqtSignal(str)
+    open_chain = pyqtSignal(object, str, object)   # chain, preset name, notes: open in ASR Effects
 
     def __init__(self):
         super().__init__()

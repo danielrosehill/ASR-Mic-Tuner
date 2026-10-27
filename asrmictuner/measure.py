@@ -144,7 +144,12 @@ class MeasurePage(QWidget):
         self.play_button.clicked.connect(lambda: self.current and store.play(self.current.get("sample_path")))
         self.ai_button = QPushButton("Ask AI")
         self.ai_button.clicked.connect(self._ask_ai)
-        for b in (self.profile_button, self.apply_button, self.play_button, self.ai_button):
+        self.chain_button = QPushButton("Build personal chain")
+        self.chain_button.setToolTip("An EasyEffects chain fitted to this voice on this mic: high-pass under "
+                                     "your lowest pitch, gate and auto gain set from your levels. Opens in ASR "
+                                     "Effects for review.")
+        self.chain_button.clicked.connect(self._personal_chain)
+        for b in (self.profile_button, self.apply_button, self.chain_button, self.play_button, self.ai_button):
             brow.addWidget(b)
         brow.addStretch(1)
         grid.addLayout(brow, 6, 0, 1, 2)
@@ -368,7 +373,8 @@ class MeasurePage(QWidget):
                     self._suggestion = ("soft", pct)
                     self.apply_button.setText(f"Apply recommended level: {pct}% ({wanted:+.1f} dB)")
         self.apply_button.setVisible(self._suggestion is not None)
-        self.profile_button.setText("Save as room profile…" if kind == "room" else "Save as voice profile…")
+        self.profile_button.setText("Save as room profile…" if kind == "room" else "Save as speaker profile…")
+        self.chain_button.setVisible(kind == "voice")
         if m.get("ai"):
             self.ai_view.setHtml(ai_html(m["ai"]))
             self.ai_view.show()
@@ -385,8 +391,9 @@ class MeasurePage(QWidget):
         if not self.current:
             return
         kind = self.current["kind"]
-        default = self.current.get("location") or ("Room" if kind == "room" else "My voice")
-        name = ask_text(self, "Save profile", f"Name for this {kind} profile:", default)
+        default = self.current.get("location") or ("Room" if kind == "room" else "Me")
+        name = ask_text(self, "Save profile", "Name for this room profile:" if kind == "room"
+                        else "Speaker name for this profile (it is tied to this microphone):", default)
         if not name:
             return
         pid = self.s.store.add_profile(kind, name, self.current["device"], self.current["id"],
@@ -412,6 +419,15 @@ class MeasurePage(QWidget):
             self.apply_button.hide()
             self._update_mic_summary()
             self.state.setText("Applied and remembered for this microphone. Run the test again to confirm.")
+
+    def _personal_chain(self):
+        if not self.current or self.current["kind"] != "voice":
+            return
+        from .effects import personal_chain
+        room = self.s.active_room_profile()
+        chain, notes = personal_chain(self.current.get("metrics") or {}, (room or {}).get("metrics"))
+        label = self.current.get("device_label") or self.current["device"]
+        self.s.open_chain.emit(chain, f"ASR Personal ({label.split('  [')[0]})", notes)
 
     def _ask_ai(self):
         if self.current:

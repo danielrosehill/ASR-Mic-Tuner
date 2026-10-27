@@ -46,6 +46,8 @@ DEFAULT_SETTINGS = {
     "voice_passage": "60-email",        # mic test text, passages.py
     "calibration_mode": "standard",
     "active_room_profile": {},          # device name -> profile id
+    "asr_autogain": True,               # slow analog auto gain while dictating (watch.py)
+    "asr_autogain_max_db": 15,
     "quiet_alert": True,                # notify when dictation runs too quiet (watch.py)
     "quiet_window_min": 3,
     "quiet_margin_db": 6,

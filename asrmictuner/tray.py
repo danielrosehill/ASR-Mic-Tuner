@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .core import METER_MIN_DB, fmt_gain, zone_for_db
-from . import autostart, kwin
+from . import asrmic, autostart, kwin
 from .kwin import POPUP_TITLE
 from .monitor import live_verdict
 from .qtutil import wrap_label
@@ -274,6 +274,14 @@ class TrayController(QObject):
         self.menu.addAction(QIcon.fromTheme("media-playlist-shuffle"), "ASR Effects…",
                             lambda: self.ctl.show_window("effects"))
         self.menu.addSeparator()
+        self.autogain_action = self.menu.addAction("ASR auto gain")
+        self.autogain_action.setCheckable(True)
+        self.autogain_action.setChecked(bool(self.s.settings.get("asr_autogain", True)))
+        self.autogain_action.toggled.connect(self._set_autogain)
+        self.asr_mic_action = self.menu.addAction("ASR Mic running")
+        self.asr_mic_action.setCheckable(True)
+        self.asr_mic_action.setToolTip("Stop or start ASR Mic for now (for a call, say); it comes back at login")
+        self.asr_mic_action.toggled.connect(self._set_asr_mic)
         self.login_action = self.menu.addAction("Start at login")
         self.login_action.setCheckable(True)
         self.login_action.setChecked(autostart.enabled())
@@ -281,10 +289,24 @@ class TrayController(QObject):
         self.menu.addAction(QIcon.fromTheme("application-exit"), "Quit", self.ctl.quit)
 
     def _sync_login(self):
-        """Settings has the same switch; show whichever was used last."""
-        self.login_action.blockSignals(True)
-        self.login_action.setChecked(autostart.enabled())
-        self.login_action.blockSignals(False)
+        """Settings and ASR Effects have the same switches; show the current state."""
+        for action, value in ((self.login_action, autostart.enabled()),
+                              (self.autogain_action, bool(self.s.settings.get("asr_autogain", True))),
+                              (self.asr_mic_action, asrmic.running())):
+            action.blockSignals(True)
+            action.setChecked(value)
+            action.blockSignals(False)
+        self.asr_mic_action.setVisible(asrmic.enabled())
+
+    def _set_autogain(self, on):
+        self.s.settings["asr_autogain"] = on
+        self.s.save_settings()
+
+    def _set_asr_mic(self, on):
+        asrmic.set_running(on)
+        self.icon.showMessage("ASR Mic", "ASR Mic started." if on else
+                              "ASR Mic stopped for now. It starts again at login, or from this menu.",
+                              QSystemTrayIcon.MessageIcon.Information, 4000)
 
     def _activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:

@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
 
         self.s.status.connect(lambda msg: self.statusBar().showMessage(msg, 8000))
         self.s.device_changed.connect(self._sync_combo)
+        self.s.open_chain.connect(self._open_chain)
         QShortcut(QKeySequence("Ctrl+Q"), self, activated=self.ctl.quit)
         QShortcut(QKeySequence("Ctrl+W"), self, activated=self.close)
 
@@ -146,6 +147,10 @@ class MainWindow(QMainWindow):
             return
         event.accept()
         self.ctl.quit()
+
+    def _open_chain(self, chain, name, notes):
+        self.effects.load_chain(chain, name, notes)
+        self.show_tab("effects")
 
     def show_tab(self, name):
         index = {"monitor": 0, "measure": 1, "history": 2, "profiles": 3, "effects": 4, "settings": 5}.get(name, 0)
