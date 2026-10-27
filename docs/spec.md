@@ -329,7 +329,7 @@ something on screen needs it.
   small front end to EasyEffects for the input side only. It has a library
   of ten speech-relevant effects (high-pass, mono fold, gate, RNNoise,
   DeepFilterNet, Speex, auto gain, compressor, de-esser, limiter) with a few
-  settings each, six chain templates, open/save/load of input presets, global
+  settings each, nine chain templates (DeepFilterNet ones for desktops, each with a "low CPU" RNNoise twin, and a "None" pass-through), open/save/load of input presets, global
   bypass, and per-microphone autoload bindings. The §3 line holds for ASR Mic
   Tuner itself: it writes EasyEffects' files and calls its CLI, and EasyEffects
   owns the processing and the nodes. Acceptance check §8.5 still applies with

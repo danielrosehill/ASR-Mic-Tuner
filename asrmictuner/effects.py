@@ -93,7 +93,8 @@ EFFECTS = {
     },
     "deepfilternet": {
         "name": "Noise reduction (DeepFilterNet)",
-        "blurb": "Stronger neural denoiser for fans, traffic, keyboards. Cap the attenuation: full strength smears consonants.",
+        "blurb": "Stronger neural denoiser for fans, traffic, keyboards. Heavy on CPU: fine on a desktop, "
+                 "use RNNoise on a laptop. Cap the attenuation: full strength smears consonants.",
         "params": [
             ("attenuation-limit", "Attenuation limit", "float", 0, 100, 100, "dB"),
             ("post-filter-beta", "Post-filter beta", "float", 0, 0.05, 0.02, ""),
@@ -157,20 +158,29 @@ EFFECTS = {
     },
 }
 
+# DeepFilterNet is the stronger denoiser but costs real CPU: on the reference
+# laptop (Ryzen, 2026-10-27) it underran when the chain started. Each chain
+# that uses it has a "low CPU" twin on RNNoise.
 TEMPLATES = [
-    ("Light clean-up", "High-pass and RNNoise: quiet room, decent mic.",
-     [("filter", {}), ("rnnoise", {})]),
-    ("Dictation standard", "High-pass, DeepFilterNet, auto gain, limiter: the usual chain.",
+    ("Dictation standard", "High-pass, DeepFilterNet, auto gain, limiter. Best on a desktop CPU.",
      [("filter", {}), ("deepfilternet", {}), ("autogain", {}), ("limiter", {})]),
-    ("Noisy room", "Adds a gentle gate and stronger denoising for fans, traffic or open offices.",
+    ("Dictation standard, low CPU", "The same chain on RNNoise: for laptops.",
+     [("filter", {}), ("rnnoise", {}), ("autogain", {}), ("limiter", {})]),
+    ("Noisy room", "Adds a gentle gate and stronger DeepFilterNet for fans, traffic or open offices. Desktop CPU.",
      [("filter", {"frequency": 100.0}), ("gate", {}), ("deepfilternet", {"attenuation-limit": 50.0}),
       ("autogain", {}), ("limiter", {})]),
+    ("Noisy room, low CPU", "Gate and RNNoise instead of DeepFilterNet: for laptops.",
+     [("filter", {"frequency": 100.0}), ("gate", {}), ("rnnoise", {}), ("autogain", {}), ("limiter", {})]),
+    ("Light clean-up", "High-pass and RNNoise only: quiet room, decent mic.",
+     [("filter", {}), ("rnnoise", {})]),
     ("Laptop array to mono", "Sums a two-channel internal mic to mono, then high-pass and RNNoise.",
      [("stereo_tools", {}), ("filter", {}), ("rnnoise", {})]),
     ("Speex all-in-one", "One lightweight block: denoise and automatic gain.",
      [("filter", {}), ("speex", {"enable-agc": True})]),
     ("Level only", "No denoising: auto gain and a limiter.",
      [("autogain", {}), ("limiter", {})]),
+    ("None", "No effects: a pass-through preset. Bind it to a mic that should reach apps untouched.",
+     []),
 ]
 
 

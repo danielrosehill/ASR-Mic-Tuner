@@ -256,7 +256,7 @@ class EffectsPage(QWidget):
             return
         self.chain = effects.from_template(name)
         if not self.name.text().strip():
-            self.name.setText(f"ASR {name}")
+            self.name.setText("ASR pass-through" if not self.chain else f"ASR {name}")
         self._render_chain(select=0)
 
     def _add(self):
@@ -303,7 +303,8 @@ class EffectsPage(QWidget):
 
     def _update_summary(self):
         if not self.chain:
-            self.summary.setText("<small>Empty chain. Pick a template or add effects.</small>")
+            self.summary.setText("<small><b>Mic</b> → <b>apps</b>, no processing. Saved like this it is a "
+                                 "pass-through preset. Pick a template or add effects.</small>")
             return
         steps = " → ".join(esc(effects.describe(e)) for e in self.chain)
         self.summary.setText(f"<small><b>Mic</b> → {steps} → <b>apps</b></small>")
@@ -371,9 +372,6 @@ class EffectsPage(QWidget):
             return
         if not name or "/" in name:
             self.s.status.emit("Give the preset a name (no slashes).")
-            return
-        if not self.chain:
-            self.s.status.emit("The chain is empty.")
             return
         if name != self.preset.currentText() and name in self.ee.presets() and QMessageBox.question(
                 self, "Overwrite preset", f"An input preset “{name}” already exists. Overwrite it?"
