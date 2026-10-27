@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .core import METER_MIN_DB, fmt_gain, zone_for_db
-from . import asrmic, autostart, kwin
+from . import asrmic, autostart, engine, kwin
 from .kwin import POPUP_TITLE
 from .monitor import live_verdict
 from .qtutil import wrap_label
@@ -273,6 +273,17 @@ class TrayController(QObject):
         self.restore_action.setEnabled(bool(self.s.drift()) if self.s.device else False)
         self.menu.addAction(QIcon.fromTheme("media-playlist-shuffle"), "ASR Effects…",
                             lambda: self.ctl.show_window("effects"))
+        noise = self.menu.addMenu(QIcon.fromTheme("audio-input-microphone"), "Noise reduction")
+        noise.setToolTipsVisible(True)
+        group = QActionGroup(noise)
+        self.noise_actions = {}
+        for key, label, _kind, _s, tip in engine.NOISE_MODES:
+            act = noise.addAction(label)
+            act.setCheckable(True)
+            act.setToolTip(tip)
+            act.triggered.connect(lambda _c=False, key=key: self._set_noise(key))
+            group.addAction(act)
+            self.noise_actions[key] = act
         self.menu.addSeparator()
         styles = self.menu.addMenu("Icon style")
         group = QActionGroup(styles)
@@ -310,10 +321,22 @@ class TrayController(QObject):
             action.setChecked(value)
             action.blockSignals(False)
         self.asr_mic_action.setVisible(asrmic.enabled())
+        mode = self.s.settings.get("noise_reduction", "off")
+        for key, act in self.noise_actions.items():
+            act.setChecked(key == mode)
 
     def _set_setting(self, key, on):
         self.s.settings[key] = on
         self.s.save_settings()
+
+    def _set_noise(self, key):
+        self._set_setting("noise_reduction", key)
+        label = next(m[1] for m in engine.NOISE_MODES if m[0] == key)
+        if not asrmic.enabled():
+            text = "Noise reduction applies to ASR Mic, which is off. Turn it on in ASR Effects."
+        else:
+            text = f"ASR Mic noise reduction: {label}. It takes a few seconds to switch."
+        self.icon.showMessage("Noise reduction", text, QSystemTrayIcon.MessageIcon.Information, 4000)
 
     def _set_asr_mic(self, on):
         asrmic.set_running(on)

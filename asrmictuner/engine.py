@@ -249,6 +249,37 @@ TEMPLATES = [
 ]
 
 
+# The quick "Noise reduction" switch (tray, ASR Effects): laid over whatever
+# chain is bound, for the times the room is loud (a crying baby, a vacuum).
+# (key, label, effect kind or None, settings, tooltip)
+NOISE_MODES = [
+    ("off", "Off", None, {}, "The bound chain as it is"),
+    ("light", "Light (RNNoise)", "rnnoise", {"vad": 0.0},
+     "Steady noise (fans, hum, traffic). About 5 % of one core"),
+    ("strong", "Strong (DeepFilterNet)", "deepfilternet", {"attenuation": 30.0},
+     "Loud, changing noise: children, voices in the room, dishes. About a third of one core; "
+     "capped at 30 dB so consonants survive"),
+]
+_FILTER_KINDS = ("highpass", "lowpass", "notch", "eq")
+
+
+def with_noise_reduction(effects, mode):
+    """The chain with the quick denoiser in place: any denoiser already in it
+    (except a VAD gate) is replaced, so two never run in series, and the new
+    one goes after the leading filters and before gate and gain stages."""
+    spec = next((m for m in NOISE_MODES if m[0] == mode), None)
+    if spec is None or spec[2] is None:
+        return effects
+    kept = [e for e in effects
+            if e.get("bypass") or e["kind"] not in ("rnnoise", "deepfilternet") or has_vad(e)]
+    if spec[2] == "rnnoise" and any(has_vad(e) and not e.get("bypass") for e in kept):
+        return kept    # the VAD gate is RNNoise already
+    at = 0
+    while at < len(kept) and (kept[at]["kind"] in _FILTER_KINDS or kept[at].get("bypass")):
+        at += 1
+    return kept[:at] + [new_entry(spec[2], spec[3])] + kept[at:]
+
+
 def defaults(kind):
     return {key: default for key, _l, _k, _lo, _hi, default, _u in EFFECTS[kind]["params"]}
 

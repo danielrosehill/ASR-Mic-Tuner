@@ -477,3 +477,30 @@ and user unit), `fxpage.py` (the tab). Reference: `docs/effects.md`.
   picked it as the nicest after seeing all four in the panel. Anyone who never
   chose a style (no `tray_icon_style` in settings) moves to it; an explicit
   choice is kept.
+
+## 18. v2.4: quick noise reduction (2026-10-27)
+
+- **Noise reduction switch: Off / Light (RNNoise) / Strong (DeepFilterNet).**
+  For the times the room is loud (a crying baby, a vacuum) without editing the
+  chain. Setting `noise_reduction` (`off`, `light`, `strong`), global rather
+  than per mic because it follows the room, not the device. Set from a radio
+  submenu in the tray menu ("Noise reduction") or a combo in ASR Effects → ASR
+  Mic, kept in sync both ways. It only acts on ASR Mic; the raw mic is untouched.
+- `engine.with_noise_reduction(effects, mode)` is applied in `asrmic.plan`
+  over the bound chain (or over no chain): it removes any denoiser already in
+  the chain (a VAD-gate RNNoise is kept), so two never run in series, and
+  inserts the chosen one after the leading filters (high-pass, low-pass, notch,
+  EQ) and before gate and gain stages. Light with a VAD gate in the chain adds
+  nothing (the gate is RNNoise already). `Off` means "the chain as it is", so a
+  chain that has its own denoiser keeps it. Bypass still wins over everything.
+  The state file records `noise_reduction`.
+- Strong is DeepFilterNet capped at 30 dB attenuation: full strength smears
+  consonants, which costs more recognition accuracy than the noise does.
+- Measured on the reference laptop (Ryzen 7 5700U, PipeWire 1.6.2, no chain
+  bound, internal mic): the `pipewire -c` process at about 5 % of one core
+  with Light and 34 % with Strong; both published `asr-mic-tuner.asr-mic` and
+  recorded through it.
+- Not added: "mic zoom" style beamforming. It needs a known multi-mic geometry;
+  laptop dmic pairs are exposed as plain stereo without one, and
+  webrtc-audio-processing 1.x dropped its beamformer. The neural denoisers are
+  what the Android "voice focus" features mostly are anyway.

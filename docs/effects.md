@@ -27,6 +27,25 @@ Bindings live in `settings.json` under `chain_bindings`, keyed `"<device>:<port 
 | Voice activity gate | RNNoise with `VAD Threshold (%)` > 0 (with a caution: see `docs/asr-mic.md`) | download |
 | DeepFilterNet | `libdeep_filter_ladspa.so`, label `deep_filter_mono`, `Attenuation Limit (dB)` | download |
 
+## Quick noise reduction
+
+The **Noise reduction** switch (tray menu, or ASR Effects → ASR Mic) lays a denoiser
+over whatever chain is bound, without editing it. Setting `noise_reduction`:
+
+| Mode | Adds | When | CPU (Ryzen 7 5700U) |
+|---|---|---|---|
+| `off` | nothing; the chain as it is | most of the time | — |
+| `light` | RNNoise, no VAD | steady noise: fans, hum, traffic | about 5 % of one core |
+| `strong` | DeepFilterNet, 30 dB cap | loud, changing noise: a crying baby, voices, dishes | about 34 % of one core |
+
+Any denoiser already in the chain is replaced, so two never run in series; a VAD gate
+is kept. The new one goes after the leading filters and before the gate and gain stages
+(`engine.with_noise_reduction`). It needs the plugin downloaded (ASR Effects →
+Get); if it is missing it is skipped and marked like any other effect.
+
+A denoiser is not free for ASR: Whisper-family models are trained on noisy audio and
+cope with mild noise better than with denoiser artefacts. Leave it off in a quiet room.
+
 A missing backend never breaks ASR Mic. The effect is skipped, the tab marks it
 "plugin missing: skipped", and the supervisor records it in `asr-mic-state.json`.
 

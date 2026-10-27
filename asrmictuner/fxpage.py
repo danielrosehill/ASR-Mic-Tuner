@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import asrmic, engine
-from .engine import EFFECTS, INPUT_MIX, LIBRARY, PLUGINS, TEMPLATES, VAD_CAUTION
+from .engine import EFFECTS, INPUT_MIX, LIBRARY, NOISE_MODES, PLUGINS, TEMPLATES, VAD_CAUTION
 from .pages import _item, _table
 from .qtutil import esc, run_async, wrap_label
 
@@ -52,6 +52,16 @@ class EffectsPage(QWidget):
         self.bypass.setChecked(bool(self.s.settings.get("asr_mic_bypass")))
         self.bypass.toggled.connect(self._bypass)
         arow.addWidget(self.bypass)
+        arow.addSpacing(12)
+        arow.addWidget(QLabel("Noise reduction"))
+        self.noise = QComboBox()
+        for key, label, _kind, _s, tip in NOISE_MODES:
+            self.noise.addItem(label, key)
+            self.noise.setItemData(self.noise.count() - 1, tip, Qt.ItemDataRole.ToolTipRole)
+        self.noise.setToolTip("A denoiser laid over the bound chain, for when the room is loud. It replaces "
+                              "any denoiser in the chain, so two never run together. Also in the tray menu.")
+        self.noise.activated.connect(self._noise_chosen)
+        arow.addWidget(self.noise)
         arow.addStretch(1)
         al.addLayout(arow)
         srow = QHBoxLayout()
@@ -291,12 +301,17 @@ class EffectsPage(QWidget):
         self.asr_mic_pause.setText("Resume" if st == "paused" else "Pause")
         colour = {"active": "#2ea44f", "off": "#888"}.get(st, "#b07d00")
         text = f"<span style='color:{colour}'>{esc(st.capitalize())}</span>"
+        mode = self.s.settings.get("noise_reduction", "off")
+        self.noise.setCurrentIndex(max(0, self.noise.findData(mode)))
         info = asrmic.read_state()
         if on and info.get("device"):
             chain = info.get("chain")
             text += (f" · fed by <b>{esc(info.get('device_description') or info['device'])}</b> · "
                      + ("effects bypassed" if info.get("bypass") else
                         f"chain <b>{esc(chain)}</b>" if chain else "no chain bound (plain mic, mono)"))
+            noise = next((m[1] for m in NOISE_MODES if m[0] == info.get("noise_reduction")), None)
+            if noise and info.get("noise_reduction") != "off" and not info.get("bypass"):
+                text += f" · noise reduction <b>{esc(noise)}</b>"
             if info.get("skipped"):
                 text += (" · <span style='color:#d43333'>skipped, plugin missing: "
                          f"{esc(', '.join(EFFECTS[k]['name'] for k in info['skipped'] if k in EFFECTS))}</span>")
@@ -317,6 +332,12 @@ class EffectsPage(QWidget):
         self.s.settings["asr_mic_bypass"] = on
         self.s.save_settings()
         self.s.status.emit("ASR Mic: effects bypassed." if on else "ASR Mic: effects on.")
+
+    def _noise_chosen(self, _i):
+        self.s.settings["noise_reduction"] = self.noise.currentData()
+        self.s.save_settings()
+        self.s.status.emit(f"ASR Mic noise reduction: {self.noise.currentText()}.")
+        QTimer.singleShot(4000, self._asr_mic_status)
 
     def _source_chosen(self, _i):
         self.s.settings["asr_mic_source"] = self.source.currentData() or ""

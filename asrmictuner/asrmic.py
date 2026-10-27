@@ -138,6 +138,8 @@ def plan(settings):
             effects, mix = engine.load_chain(name)
         except (OSError, ValueError):
             name = None
+    if not settings.get("asr_mic_bypass"):
+        effects = engine.with_noise_reduction(effects, settings.get("noise_reduction", "off"))
     return device, name, effects, mix
 
 
@@ -178,6 +180,7 @@ def serve():
                 "device": device.name if device else None,
                 "device_description": device.description if device else None,
                 "chain": name, "bypass": bool(settings.get("asr_mic_bypass")),
+                "noise_reduction": settings.get("noise_reduction", "off"),
                 "skipped": skipped, "updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
             }, indent=2) + "\n")
         time.sleep(POLL_S)
