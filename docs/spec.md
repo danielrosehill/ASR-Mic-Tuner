@@ -60,7 +60,9 @@ the available meters looked fine.
 
 - **No audio processing, ever.** ASR Mic Tuner inserts no filter, no virtual
   source, no AGC, no noise suppression. It observes, and it sets gain. The
-  audio graph must be byte-identical before and after running it.
+  audio graph must be byte-identical before and after running it. (Since
+  v0.5 the ASR Effects tab writes *EasyEffects* presets and asks EasyEffects
+  to load them; see §11 for where that line sits.)
 - Not an equaliser and not a routing tool (`helvum`/`qpwgraph` already do
   routing). It records **only on explicit request** (Measure tab, `--measure`),
   for analysis and for noise profiles; it is not a general recorder.
@@ -302,3 +304,34 @@ something on screen needs it.
   login through XDG autostart.
 - **CLI for agents**: `--list --json`, `--measure room|voice`,
   `--history --json`.
+
+## 11. v0.5 additions (2026-10-27)
+
+- **Start at login** is now also a checkable item in the tray menu, next to
+  the Settings switch. Both write the same XDG autostart entry,
+  `~/.config/autostart/asr-mic-tuner.desktop` (`Exec=asr-mic-tuner --tray`).
+- **Quiet-mic alert** (`asrmictuner/watch.py`, on by default). Every 3 s it
+  asks `pactl` whether an application other than a level meter is recording
+  from the selected mic, directly or through a virtual source fed by it
+  (`core.recording_clients`). Only while one is does the watcher hold its own
+  capture. This is in memory only, nothing is written, and Plasma's in-use
+  indicator is already lit by the other app. It gates out non-speech blocks
+  (noise floor + 12 dB, floor −60 dBFS) and judges the last *N* minutes of
+  **recording time** (default 3), which accumulate across dictation bursts
+  and are discarded after a 30-minute gap. It needs ≥ 20 s of speech in that
+  window. The level is the 95th-percentile block peak, the live verdict's
+  statistic. If that is ≥ *margin* dB (default 6) under the −18 dBFS band
+  edge, one notification goes out, the window restarts, and the next alert
+  waits at least 30 min. A gain change or device switch restarts the window.
+  This amends §3's "records only on explicit request": the watcher analyses
+  but never stores.
+- **ASR Effects tab** (`effects.py`, `fxpage.py`, `docs/easyeffects.md`): a
+  small front end to EasyEffects for the input side only. It has a library
+  of ten speech-relevant effects (high-pass, mono fold, gate, RNNoise,
+  DeepFilterNet, Speex, auto gain, compressor, de-esser, limiter) with a few
+  settings each, six chain templates, open/save/load of input presets, global
+  bypass, and per-microphone autoload bindings. The §3 line holds for ASR Mic
+  Tuner itself: it writes EasyEffects' files and calls its CLI, and EasyEffects
+  owns the processing and the nodes. Acceptance check §8.5 still applies with
+  EasyEffects not running.
+

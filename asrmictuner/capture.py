@@ -256,6 +256,12 @@ class Analyser:
             return None
         return percentile(peaks, 95)
 
+    def peaks_since(self, since):
+        """(timestamp, worst-channel peak dBFS) blocks newer than `since`,
+        for consumers that keep a longer history than RECENT_WINDOW_S."""
+        with self._lock:
+            return [(t, p) for t, p in self._recent if t > since]
+
     def snapshot(self):
         with self._lock:
             return [

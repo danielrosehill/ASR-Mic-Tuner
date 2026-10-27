@@ -6,7 +6,9 @@ to do nothing, so autostart and a menu launch can coexist.
 """
 
 import os
+import shutil
 import signal
+import subprocess
 import sys
 
 from PyQt6.QtCore import QTimer
@@ -23,11 +25,14 @@ class Controller:
     def __init__(self, app, start_in_tray):
         from .session import Session
         from .tray import TrayController
+        from .watch import QuietWatch
         from .window import MainWindow
 
         self.app = app
         self.session = Session()
         self.session.rescan()
+        self.watch = QuietWatch(self.session)
+        self.watch.alert.connect(self.notify)
         # Window first, so its pages are connected before the first
         # device_changed fires.
         self.window = MainWindow(self.session, self)
@@ -53,6 +58,14 @@ class Controller:
             self.tray.hide()
             self.tray = None
 
+    def notify(self, title, body):
+        """Through the tray icon when there is one, else notify-send."""
+        if self.tray is not None:
+            from PyQt6.QtWidgets import QSystemTrayIcon
+            self.tray.icon.showMessage(title, body, QSystemTrayIcon.MessageIcon.Warning, 15000)
+        elif shutil.which("notify-send"):
+            subprocess.Popen(["notify-send", "-a", "ASR Mic Tuner", "-i", "audio-input-microphone", title, body])
+
     def tray_active(self):
         return self.tray is not None
 
@@ -71,12 +84,14 @@ class Controller:
             self.show_window()
 
     def quit(self):
+        self.watch.timer.stop()
         self.window.settings_page.save()
         if self.tray:
             self.tray.hide()
         self.session.release("window")
         self.session.release("popup")
         self.session.release("tray")
+        self.session.release("watch")
         self.app.quit()
 
 

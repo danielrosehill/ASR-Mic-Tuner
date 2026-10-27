@@ -77,6 +77,11 @@ main window, the tray pop-up, or the opt-in "live level in tray icon".
 idle tray polls only `amixer` every 4 s, for the gain zone and drift, and
 never shows ASR Mic Tuner as recording.
 
+The quiet-mic alert (v0.5) is the fourth user, `"watch"`. It acquires only
+while *another* application is already recording from the mic, so the
+indicator is lit either way. It polls `pactl list source-outputs` every 3 s
+to find out (`docs/spec.md` §11).
+
 ## Single instance
 
 `app.py` listens on a `QLocalServer` named `asr-mic-tuner-<uid>`. A second launch

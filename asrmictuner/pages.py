@@ -9,12 +9,12 @@ from PyQt6.QtGui import QDesktopServices, QGuiApplication
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTableWidget,
+    QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QSplitter, QTableWidget,
     QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from . import ai, autostart, kwin, store
-from .core import fmt_gain, fmt_level
+from .core import TARGET_LO_DB, fmt_gain, fmt_level
 from .qtutil import (
     ask_ai, ask_text, ai_html, esc, findings_html, key_result, metrics_html, run_async,
     wrap_label,
@@ -407,10 +407,10 @@ MODEL_SUGGESTIONS = [
 
 
 class SettingsPage(QWidget):
-    def __init__(self, session, tray=None, parent=None):
+    def __init__(self, session, watch=None, parent=None):
         super().__init__(parent)
         self.s = session
-        self.tray = tray
+        self.watch = watch
         st = self.s.settings
         root = QVBoxLayout(self)
 
@@ -459,6 +459,35 @@ class SettingsPage(QWidget):
         tl.addWidget(self.autostart)
         root.addWidget(traybox)
 
+        quietbox = QGroupBox("Quiet-mic alert")
+        ql = QFormLayout(quietbox)
+        self.quiet = QCheckBox("Notify me when dictation runs too quiet")
+        self.quiet.setChecked(bool(st.get("quiet_alert", True)))
+        self.quiet.toggled.connect(lambda on: self._set("quiet_alert", on))
+        ql.addRow("", self.quiet)
+        self.quiet_window = QSpinBox()
+        self.quiet_window.setRange(1, 15)
+        self.quiet_window.setSuffix(" min of recording")
+        self.quiet_window.setValue(int(st.get("quiet_window_min", 3)))
+        self.quiet_window.valueChanged.connect(lambda v: self._set("quiet_window_min", v))
+        ql.addRow("Judge over", self.quiet_window)
+        self.quiet_margin = QSpinBox()
+        self.quiet_margin.setRange(3, 20)
+        self.quiet_margin.setSuffix(f" dB under the {TARGET_LO_DB:.0f} dBFS target")
+        self.quiet_margin.setValue(int(st.get("quiet_margin_db", 6)))
+        self.quiet_margin.valueChanged.connect(lambda v: self._set("quiet_margin_db", v))
+        ql.addRow("Alert at", self.quiet_margin)
+        ql.addRow(wrap_label(
+            "<small>Listens only while another application is recording from this microphone, and counts "
+            "only speech, so pauses and silence never trigger it. At most one alert per half hour.</small>"))
+        self.quiet_state = wrap_label()
+        ql.addRow("Now", self.quiet_state)
+        if self.watch is not None:
+            self.watch.state_changed.connect(self._quiet_status)
+            self.s.settings_changed.connect(self._quiet_status)
+            self._quiet_status()
+        root.addWidget(quietbox)
+
         databox = QGroupBox("Data")
         dl = QVBoxLayout(databox)
         dl.addWidget(wrap_label(
@@ -477,6 +506,15 @@ class SettingsPage(QWidget):
     def _set(self, key, value):
         self.s.settings[key] = value
         self.s.save_settings()
+
+    def _quiet_status(self):
+        self.quiet_state.setText(f"<small>{esc(self.watch.status())}</small>")
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.autostart.blockSignals(True)       # the tray menu can toggle it too
+        self.autostart.setChecked(autostart.enabled())
+        self.autostart.blockSignals(False)
 
     def _pin(self, on):
         ok, message = kwin.install_rule() if on else kwin.remove_rule()

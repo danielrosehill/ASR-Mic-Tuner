@@ -45,6 +45,9 @@ DEFAULT_SETTINGS = {
     "voice_seconds": 20,
     "calibration_mode": "standard",
     "active_room_profile": {},          # device name -> profile id
+    "quiet_alert": True,                # notify when dictation runs too quiet (watch.py)
+    "quiet_window_min": 3,
+    "quiet_margin_db": 6,
 }
 
 SCHEMA = """

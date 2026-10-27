@@ -501,6 +501,11 @@ class Device:
                 self.card = None
         self.card_name = props.get("alsa.card_name", "")
         self.alsa_name = props.get("alsa.name", "")
+        # The active port's description ("Internal Microphone"): EasyEffects
+        # keys its per-device autoload on it.
+        active = entry.get("active_port")
+        self.port = next((p.get("description", "") for p in entry.get("ports") or []
+                          if p.get("name") == active), "")
 
         spec = entry.get("sample_specification", "")
         channels = _SPEC.search(spec)
@@ -556,6 +561,44 @@ def default_source():
     return run(["pactl", "get-default-source"]).strip()
 
 
+# Capture streams that do not mean "someone is dictating": ours, level meters
+# in mixers, and EasyEffects' own pull from the hardware mic.
+_NOT_A_RECORDER = ("asr-mic-tuner", "pavucontrol", "pwvucontrol", "plasmashell", "easyeffects")
+
+
+def recording_clients(device_name):
+    """Applications other than meters currently recording from `device_name`,
+    or from a virtual source fed by it (EasyEffects' `easyeffects_source`,
+    a noise-suppression node). Returns their application names.
+
+    A virtual source whose upstream cannot be traced is counted too: the
+    common case is an effects chain in front of the default mic.
+    """
+    sources = {e.get("index"): str(e.get("name", "")) for e in pactl_json("list", "sources") or []}
+    names = []
+    upstream = {}
+    for out in pactl_json("list", "source-outputs") or []:
+        props = out.get("properties") or {}
+        if out.get("corked") or props.get("stream.monitor") == "true" or props.get("pulse.peak_detect") == "true":
+            continue
+        who = " ".join(str(props.get(k, "")) for k in
+                       ("application.name", "application.id", "application.process.binary", "node.name")).lower()
+        if any(tag in who for tag in _NOT_A_RECORDER) or props.get("node.name", "").startswith("ee_"):
+            continue
+        source = sources.get(out.get("source"), "")
+        if not source or source.endswith(".monitor"):
+            continue
+        if source != device_name:
+            if source.startswith("alsa_input."):
+                continue                    # a different microphone
+            if source not in upstream:
+                upstream[source] = resolve_hardware_for(source)
+            if upstream[source] not in (None, device_name):
+                continue
+        names.append(props.get("application.name") or props.get("node.name") or "unknown")
+    return names
+
+
 def set_source_percent(name, percent):
     """Software (digital) volume of a source, for devices with no analog gain.
 
@@ -573,24 +616,31 @@ def set_source_percent(name, percent):
 
 
 def resolve_hardware_for(virtual_name):
-    """Best effort: walk pw-link backwards from a virtual source to its input.
+    """Best effort: walk pw-link backwards from a virtual source to its input,
+    through any chain of filter nodes (EasyEffects' `easyeffects_source` sits
+    behind half a dozen `ee_sie_*` nodes).
 
     PipeWire node names do not always equal PulseAudio source names (a source
     `asr_mic` shows up as node `asr_mic_capture`), so matching is by prefix.
     """
-    out = run(["pw-link", "-l"])
+    upstream = {}
     node = None
-    for line in out.splitlines():
+    for line in run(["pw-link", "-l"]).splitlines():
         if not line.startswith((" ", "\t")):
             node = line.split(":", 1)[0].strip()
             continue
-        if node is None or not node.startswith(virtual_name):
-            continue
         stripped = line.strip()
-        if stripped.startswith("|<-"):
-            upstream = stripped[3:].strip().split(":", 1)[0]
-            if upstream.startswith("alsa_input."):
-                return upstream
+        if node and stripped.startswith("|<-"):
+            upstream.setdefault(node, set()).add(stripped[3:].strip().split(":", 1)[0])
+    queue = [n for n in upstream if n.startswith(virtual_name)]
+    seen = set(queue)
+    while queue:
+        for up in sorted(upstream.get(queue.pop(0), ())):
+            if up.startswith("alsa_input."):
+                return up
+            if up not in seen:
+                seen.add(up)
+                queue.append(up)
     return None
 
 

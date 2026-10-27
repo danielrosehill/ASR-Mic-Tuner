@@ -1,4 +1,4 @@
-"""The main window: device and location header, five tabs, status bar."""
+"""The main window: device and location header, six tabs, status bar."""
 
 
 from PyQt6.QtGui import QIcon, QKeySequence, QShortcut
@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import VERSION
+from .fxpage import EffectsPage
 from .measure import MeasurePage
 from .monitor import MonitorPage
 from .pages import HistoryPage, ProfilesPage, SettingsPage
@@ -60,11 +61,13 @@ class MainWindow(QMainWindow):
         self.measure = MeasurePage(session)
         self.history = HistoryPage(session)
         self.profiles = ProfilesPage(session)
-        self.settings_page = SettingsPage(session)
+        self.effects = EffectsPage(session)
+        self.settings_page = SettingsPage(session, app_controller.watch)
         self.tabs.addTab(scrolled(self.monitor), QIcon.fromTheme("audio-input-microphone"), "Monitor")
         self.tabs.addTab(scrolled(self.measure), QIcon.fromTheme("media-record"), "Measure")
         self.tabs.addTab(self.history, QIcon.fromTheme("view-history"), "History")
         self.tabs.addTab(scrolled(self.profiles), QIcon.fromTheme("bookmarks"), "Profiles")
+        self.tabs.addTab(scrolled(self.effects), QIcon.fromTheme("audio-effects-symbolic", QIcon.fromTheme("media-playlist-shuffle")), "ASR Effects")
         self.tabs.addTab(scrolled(self.settings_page), QIcon.fromTheme("configure"), "Settings")
         root.addWidget(self.tabs, 1)
         self.setCentralWidget(central)
@@ -145,5 +148,5 @@ class MainWindow(QMainWindow):
         self.ctl.quit()
 
     def show_tab(self, name):
-        index = {"monitor": 0, "measure": 1, "history": 2, "profiles": 3, "settings": 4}.get(name, 0)
+        index = {"monitor": 0, "measure": 1, "history": 2, "profiles": 3, "effects": 4, "settings": 5}.get(name, 0)
         self.tabs.setCurrentIndex(index)

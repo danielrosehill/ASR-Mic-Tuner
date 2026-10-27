@@ -2,4 +2,4 @@
 
 APP = "asr-mic-tuner"
 DISPLAY_NAME = "ASR Mic Tuner"
-VERSION = "0.4.0"
+VERSION = "0.5.0"

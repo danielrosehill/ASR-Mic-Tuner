@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .core import METER_MIN_DB, fmt_gain, zone_for_db
-from . import kwin
+from . import autostart, kwin
 from .kwin import POPUP_TITLE
 from .monitor import live_verdict
 from .qtutil import wrap_label
@@ -220,6 +220,7 @@ class TrayController(QObject):
         self.popup = TrayPopup(session, app_controller)
         self.menu = QMenu()
         self._build_menu()
+        self.menu.aboutToShow.connect(self._sync_login)
         self.icon.setContextMenu(self.menu)
         self._state = None
         self._notified_drift = None
@@ -270,8 +271,20 @@ class TrayController(QObject):
         self.restore_action = self.menu.addAction(QIcon.fromTheme("edit-undo"), "Restore remembered gain",
                                                   self.s.restore_remembered)
         self.restore_action.setEnabled(bool(self.s.drift()) if self.s.device else False)
+        self.menu.addAction(QIcon.fromTheme("media-playlist-shuffle"), "ASR Effects…",
+                            lambda: self.ctl.show_window("effects"))
         self.menu.addSeparator()
+        self.login_action = self.menu.addAction("Start at login")
+        self.login_action.setCheckable(True)
+        self.login_action.setChecked(autostart.enabled())
+        self.login_action.toggled.connect(autostart.set_enabled)
         self.menu.addAction(QIcon.fromTheme("application-exit"), "Quit", self.ctl.quit)
+
+    def _sync_login(self):
+        """Settings has the same switch; show whichever was used last."""
+        self.login_action.blockSignals(True)
+        self.login_action.setChecked(autostart.enabled())
+        self.login_action.blockSignals(False)
 
     def _activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:

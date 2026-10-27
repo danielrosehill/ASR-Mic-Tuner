@@ -38,7 +38,8 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 | **Measure** | **Room tone** (5–120 s): noise floor (p10, RMS, A-weighted), stationarity, transients, rumble, speech-band and hiss energy, mains hum (50/60 Hz plus harmonics), spectral flatness, 1/3-octave bands, and a sox noise profile for later cleanup. **Voice sample** (10–120 s, read the passage shown): speech peak and RMS, SNR against the active room profile, crest factor, dynamic range, pitch (F0) median and range, spectral centroid and tilt, bandwidth (it catches Bluetooth HFP narrowband), rumble, presence, sibilance, plosive pops and channel imbalance. All of that feeds an **ASR readiness score** from 0 to 100 with named deductions, plus a suggested gain. |
 | **History** | Every measurement, with device, gain, location, notes, sample file and AI review. Filter by device or kind, play a sample, ask the AI, promote a measurement to a profile, or export everything as JSON. |
 | **Profiles** | **Gain presets** per microphone ("office", "living room"); the ★ preset is the remembered gain that Restore, the tray and the login unit reapply. **Room noise profiles**: the active one per device is the SNR reference and the spectrum overlay, and each has a "copy sox cleanup command" action. **Voice profiles** as well. |
-| **Settings** | OpenRouter key and model, an option to send the audio as well as the numbers, tray behaviour, start at login, auto-restore on drift, and the data folder. |
+| **ASR Effects** | A small front end to [EasyEffects](https://github.com/wwmm/easyeffects) for the **input side only**. It offers ten speech-relevant effects (high-pass, mono fold, gate, RNNoise, DeepFilterNet, Speex, auto gain, compressor, de-esser, limiter), each with a few settings, and six chain templates ("Dictation standard", "Noisy room", "Laptop array to mono"…). You can open, save and load input presets, bypass everything for A/B, and **bind a preset to a microphone and port** (EasyEffects autoload). Details: [`docs/easyeffects.md`](docs/easyeffects.md). |
+| **Settings** | OpenRouter key and model, an option to send the audio as well as the numbers, tray behaviour, start at login, the quiet-mic alert, auto-restore on drift, and the data folder. |
 
 | Tray pop-up | Room tone analysis |
 |---|---|
@@ -48,14 +49,18 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 - **Left-click** opens a pop-up with the device, a gain slider and ± buttons, a live meter, the verdict and preset choice. It listens only while it's open.
 - **Middle-click** opens the main window. **Right-click** opens a menu with presets, Restore remembered gain and Quit.
 - The icon dot shows the gain zone. It turns amber with "!" and sends a notification when **something else moves your gain**. wireplumber does this, and it was seen resetting the preamp to maximum.
+- **Quiet-mic alert**: while another app (your dictation tool) is recording from the mic, ASR Mic Tuner listens alongside it. If your speech over the last 3 minutes of recording sits well under the target band (6 dB or more below −18 dBFS by default), you get one notification. It counts speech only, so pauses never trigger it, and it repeats at most every half hour. Window and margin are in Settings.
+- **Start at login** is a checkbox in the right-click menu and in Settings.
 
 **Microphones with no analog control** (Bluetooth headsets, processed virtual sources) fall back to PipeWire software volume in 1% steps, clearly labelled as digital.
 
 ## What it does not do
 
 ASR Mic Tuner inserts **no** audio processing, no filter, no virtual source and no
-AGC, and installs nothing into `/etc`. It observes, sets gain, and records only
-when you ask it to. The sibling project [`dictamic`](https://github.com/danielrosehill/dictamic)
+AGC, and installs nothing into `/etc`. It observes and sets gain. It records to disk
+only when you ask, and the quiet-mic alert analyses in memory without storing anything. The
+ASR Effects tab writes EasyEffects presets and asks EasyEffects to load them,
+so the processing belongs to EasyEffects. The sibling project [`dictamic`](https://github.com/danielrosehill/dictamic)
 took the processing route. Measurement showed raw audio at *correct* gain had a
 **9 dB lower noise floor** than that whole chain, so ASR Mic Tuner makes correct gain
 easy instead.
@@ -84,7 +89,7 @@ Then run `asr-mic-tuner`, or `asr-mic-tuner --tray` to start in the tray only (w
 Tested on Ubuntu 26.04; it needs only archive packages (PyQt6, numpy), so 24.04 and later should work. It's built for KDE Plasma and works on any desktop with a StatusNotifierItem tray.
 
 Depends: `python3-pyqt6 python3-numpy pulseaudio-utils alsa-utils`.
-Recommends: `sox` (FLAC samples and noise profiles), `ffmpeg` (audio for AI),
+Recommends: `sox` (FLAC samples and noise profiles), `ffmpeg` (audio for AI), `libnotify-bin` (quiet-mic alert without a tray),
 `pipewire-bin` (playback), `libkf6config-bin` and `qdbus-qt6` (KWin pop-up placement).
 
 **Formerly Mic Monitor (`mic-monitor`, v0.3) and `micscope` (v0.1–0.2).** The `asr-mic-tuner`
@@ -110,6 +115,8 @@ asr-mic-tuner --restore [--delay 8]           # reapply remembered gain (used by
 | `~/.config/asr-mic-tuner/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
 | `~/.local/share/asr-mic-tuner/history.db` | SQLite: `measurements`, `profiles` |
 | `~/.local/share/asr-mic-tuner/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
+| `~/.config/autostart/asr-mic-tuner.desktop` | start in the tray at login (Settings or tray menu) |
+| `~/.var/app/com.github.wwmm.easyeffects/data/easyeffects/{input,autoload/input}/` | EasyEffects presets and mic bindings written by ASR Effects (native install: `~/.local/share/easyeffects/`) |
 | `~/.config/kwinrulesrc` group `asr-mic-tuner-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |
 
 ## Build
@@ -125,3 +132,4 @@ python3 -m asrmictuner       # run from the source tree
 - [`docs/gain-mapping.md`](docs/gain-mapping.md): the measured pactl ↔ ALSA mapping
 - [`docs/analysis.md`](docs/analysis.md): what every metric means and the thresholds behind the findings and score
 - [`docs/kde-integration.md`](docs/kde-integration.md): tray, pop-up placement on Wayland, and the microphone-in-use indicator
+- [`docs/easyeffects.md`](docs/easyeffects.md): EasyEffects preset, autoload and CLI formats as used by the ASR Effects tab, verified against 8.3.0
