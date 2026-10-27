@@ -1,53 +1,40 @@
-"""ASR Mic: the processed microphone as a source of its own.
+"""ASR Mic: the processed microphone as an input of its own.
 
-EasyEffects publishes its processed input as `easyeffects_source` ("Easy
-Effects Source"). ASR Mic is a `pw-loopback` from that node into a virtual
-source named "ASR Mic", run by a systemd user unit so it survives logins:
+A systemd user unit (`asr-mic-tuner-asr-mic.service`, WantedBy
+pipewire.service) runs `asr-mic-tuner --asr-mic`, the supervisor below.
+Every POLL_S seconds it works out which microphone feeds ASR Mic and which
+chain is bound to it (engine.py), and keeps exactly one `pipewire -c` process
+running that chain. When the microphone, the chain, or a plugin changes, it
+regenerates the config and restarts the process. That takes about a second,
+and ASR Mic disappears briefly while it happens.
 
-    hardware mic ──► EasyEffects chain ──► easyeffects_source ──► ASR Mic ──► dictation app
-         │
-         └──► everything else (calls, recorders) gets the raw mic, still the default
-
-The raw mic stays the system default and untouched; only apps pointed at
-"ASR Mic" get the chain. If EasyEffects is not running, ASR Mic is silent
-rather than quietly falling back to the raw mic (`node.dont-fallback`): the
-source is simply absent until EasyEffects is back, so a broken chain is
-noticed instead of masked.
+The raw microphone stays the system default and is never altered; only apps
+pointed at "ASR Mic" get the chain. The capture side uses
+`node.dont-fallback`, so if the microphone goes away, ASR Mic goes silent rather
+than quietly switching to another mic.
 
 Node names start with "asr-mic-tuner." so the quiet-mic watcher can tell the
-loopback's own capture apart from a real recorder. The name `asr_mic` is
-avoided on purpose: the older sibling project dictamic creates a source with
-that name.
+chain's own capture apart from a real recorder. The name `asr_mic` is avoided
+on purpose: the older sibling project dictamic creates a source with that name.
 """
 
+import json
 import shutil
 import signal
 import subprocess
 import sys
 import time
 
-from . import APP
-from .core import ASR_MIC_NODE, UNIT_FILE, own_exec_path, pactl_json, run
+from . import APP, engine
+from .core import ASR_MIC_NODE, UNIT_FILE, default_source, list_devices, own_exec_path, pactl_json, run
 
 UNIT_NAME = f"{APP}-asr-mic.service"
 UNIT_PATH = UNIT_FILE.parent / UNIT_NAME
-UPSTREAM = "easyeffects_source"
-
+STATE_FILE = engine.CONFIG_DIR / "asr-mic-state.json"
 POLL_S = 3
-LOOPBACK_ARGS = [
-    "--name", f"{ASR_MIC_NODE}-loopback",
-    f"--capture-props={{ node.name={ASR_MIC_NODE}-capture target.object={UPSTREAM} node.passive=true "
-    "node.dont-fallback=true stream.dont-remix=true }",
-    f'--playback-props={{ node.name={ASR_MIC_NODE} media.class=Audio/Source node.description="ASR Mic" }}',
-]
 
-# pw-loopback exits (status 0) when its target disappears, and exits at once
-# if started without one (node.dont-fallback). So the unit runs a supervisor,
-# `asr-mic-tuner --asr-mic` (serve() below), that keeps one loopback running
-# exactly while easyeffects_source exists. Verified on 2026-10-27,
-# PipeWire 1.6.2.
 UNIT = """[Unit]
-Description=ASR Mic: the EasyEffects-processed microphone as its own source (ASR Mic Tuner)
+Description=ASR Mic: the microphone through its ASR effects chain (ASR Mic Tuner)
 Documentation=file:///usr/share/doc/@APP@/asr-mic.md
 After=pipewire.service wireplumber.service
 PartOf=pipewire.service
@@ -66,45 +53,8 @@ def unit_text():
     return UNIT.replace("@EXEC@", own_exec_path()).replace("@APP@", APP)
 
 
-def serve():
-    """Supervisor loop for the unit: loopback up while EasyEffects' output exists."""
-    proc = None
-
-    def stop(*_):
-        if proc and proc.poll() is None:
-            proc.terminate()
-        sys.exit(0)
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
-    loopback = shutil.which("pw-loopback")
-    if not loopback:
-        print("pw-loopback not found (package pipewire-bin)", file=sys.stderr)
-        return 1
-    while True:
-        up = upstream_present()
-        running = proc is not None and proc.poll() is None
-        if up and not running:
-            proc = subprocess.Popen([loopback, *LOOPBACK_ARGS])
-        elif not up and running:
-            proc.terminate()
-            proc.wait(timeout=5)
-        time.sleep(POLL_S)
-
-
 def available():
-    return bool(shutil.which("pw-loopback") and shutil.which("systemctl"))
-
-
-def state():
-    """One line for the UI."""
-    if not enabled():
-        return "off"
-    if not running():
-        return "paused"
-    if present():
-        return "active"
-    return "waiting for EasyEffects" if not upstream_present() else "starting"
+    return bool(shutil.which("pipewire") and shutil.which("systemctl"))
 
 
 def enabled():
@@ -127,13 +77,25 @@ def present():
     return any(e.get("name") == ASR_MIC_NODE for e in pactl_json("list", "sources") or [])
 
 
-def upstream_present():
-    return any(e.get("name") == UPSTREAM for e in pactl_json("list", "sources") or [])
+def read_state():
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def state():
+    """One word for the UI."""
+    if not enabled():
+        return "off"
+    if not running():
+        return "paused"
+    return "active" if present() else "starting"
 
 
 def set_enabled(on):
     if not available():
-        return False, "pw-loopback or systemctl is missing (package pipewire-bin)."
+        return False, "pipewire or systemctl is missing."
     if on:
         UNIT_PATH.parent.mkdir(parents=True, exist_ok=True)
         UNIT_PATH.write_text(unit_text())
@@ -144,3 +106,78 @@ def set_enabled(on):
     UNIT_PATH.unlink(missing_ok=True)
     run(["systemctl", "--user", "daemon-reload"])
     return True, "ASR Mic removed."
+
+
+# ---------------------------------------------------------------------------
+# the supervisor
+# ---------------------------------------------------------------------------
+
+def pick_device(settings):
+    """The microphone that feeds ASR Mic: the one chosen in ASR Effects, or
+    else the hardware behind the system default input."""
+    devices = [d for d in list_devices() if not d.name.startswith(ASR_MIC_NODE)]
+    by_name = {d.name: d for d in devices}
+    chosen = settings.get("asr_mic_source") or ""
+    if chosen in by_name:
+        return by_name[chosen]
+    default = by_name.get(default_source())
+    if default and default.is_hardware:
+        return default
+    return next((d for d in devices if d.is_hardware), default)
+
+
+def plan(settings):
+    """(device, chain name, effects, input mix) for the current settings."""
+    device = pick_device(settings)
+    if device is None:
+        return None, None, [], engine.INPUT_MIX[0]
+    name = (settings.get("chain_bindings") or {}).get(engine.binding_key(device.name, device.port))
+    effects, mix = [], engine.INPUT_MIX[0]
+    if name and not settings.get("asr_mic_bypass"):
+        try:
+            effects, mix = engine.load_chain(name)
+        except (OSError, ValueError):
+            name = None
+    return device, name, effects, mix
+
+
+def serve():
+    from .store import load_settings
+    proc = None
+
+    def stop(*_):
+        if proc and proc.poll() is None:
+            proc.terminate()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    pipewire = shutil.which("pipewire")
+    if not pipewire:
+        print("pipewire binary not found", file=sys.stderr)
+        return 1
+    last = None
+    while True:
+        settings = load_settings()
+        device, name, effects, mix = plan(settings)
+        text, skipped = engine.config_text(device, effects, mix) if device else (None, [])
+        if text != last or (proc is not None and proc.poll() is not None):
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            proc = None
+            if text:
+                engine.RUN_CONF.parent.mkdir(parents=True, exist_ok=True)
+                engine.RUN_CONF.write_text(text)
+                proc = subprocess.Popen([pipewire, "-c", str(engine.RUN_CONF)])
+            last = text
+            STATE_FILE.write_text(json.dumps({
+                "device": device.name if device else None,
+                "device_description": device.description if device else None,
+                "chain": name, "bypass": bool(settings.get("asr_mic_bypass")),
+                "skipped": skipped, "updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }, indent=2) + "\n")
+        time.sleep(POLL_S)

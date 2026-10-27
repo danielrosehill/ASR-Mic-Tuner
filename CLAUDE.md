@@ -12,16 +12,19 @@ In scope:
 - Measuring a mic and the room on-device (Measure tab, `analysis.py`) and recommending
   gain changes, with a one-click apply that is remembered **per microphone**.
 - Watching levels while another app dictates (quiet-mic alert, `watch.py`).
-- Input-side processing chains run by EasyEffects (ASR Effects tab, `effects.py`,
-  `fxpage.py`), bound per microphone and port, and the **ASR Mic** virtual source
-  (`asrmic.py`) that carries the processed signal while the raw mic stays the default.
+- Input-side processing chains run by our own engine inside PipeWire (ASR Effects
+  tab, `engine.py`, `fxpage.py`), bound per microphone and port, published as the
+  **ASR Mic** source (`asrmic.py`) while the raw mic stays the default. No external
+  effects application is used or mentioned. Plugins come from PipeWire itself, the
+  distro archive (swh-plugins), or the maintainers' releases (RNNoise, DeepFilterNet),
+  pinned by SHA-256.
 
 Out of scope (decline or point elsewhere): output/playback audio, speakers, music EQ,
 transcription itself, routing beyond ASR Mic, recording as a general recorder, and any
 system-wide change (nothing in `/etc`; user units and user config only).
 
 Everything recommended or measured is tied to a device (`device` name, plus port for
-EasyEffects bindings), because each microphone behaves differently.
+chain bindings), because each microphone behaves differently.
 
 ## Releases
 
@@ -34,6 +37,6 @@ reads it.
 
 ## Docs
 
-`docs/spec.md` (design and the processing boundary, §3 and §11–12), `docs/easyeffects.md`
-(EasyEffects file and CLI formats), `docs/asr-mic.md` (the virtual source),
+`docs/spec.md` (design and the processing boundary, §3 and §14), `docs/effects.md`
+(every effect, its backend and test results), `docs/asr-mic.md` (the ASR Mic source),
 `docs/analysis.md` (every metric and threshold).

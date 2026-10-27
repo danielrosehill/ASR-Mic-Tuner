@@ -145,7 +145,7 @@ class MeasurePage(QWidget):
         self.ai_button = QPushButton("Ask AI")
         self.ai_button.clicked.connect(self._ask_ai)
         self.chain_button = QPushButton("Build personal chain")
-        self.chain_button.setToolTip("An EasyEffects chain fitted to this voice on this mic: high-pass under "
+        self.chain_button.setToolTip("An ASR Mic chain fitted to this voice on this mic: high-pass under "
                                      "your lowest pitch, gate and auto gain set from your levels. Opens in ASR "
                                      "Effects for review.")
         self.chain_button.clicked.connect(self._personal_chain)
@@ -205,24 +205,16 @@ class MeasurePage(QWidget):
                 f"at gain {fmt_gain(m.get('gain_db'))}.")
         else:
             parts.append("No mic test yet for this microphone. Read a text below to get one.")
-        remembered = self.s.remembered()
+        remembered = (self.s.remembered() or {}).get("index")
         if remembered is not None and self.s.curve is not None:
             parts.append(f"Remembered gain {fmt_gain(self.s.curve.db(remembered))} (index {remembered}).")
         elif self.s.soft_only:
             parts.append("No analog gain control: adjustments use software volume.")
-        try:
-            from .effects import EasyEffects
-            ee = EasyEffects()
-            bound = [b for b in ee.bindings()
-                     if b.get("device") == d.name and b.get("device-profile", "") == (d.port or "")]
-            known = set(ee.presets())
-        except Exception:                    # EasyEffects absent or unreadable: not this tab's problem
-            bound, known = [], set()
-        if bound:
-            name = bound[0].get("preset-name", "")
-            parts.append(f"ASR chain: <b>{esc(name)}</b>" + ("" if name in known else
-                         " <span style='color:#d43333'>(preset missing: nothing loads)</span>")
-                         + " (ASR Effects tab).")
+        from . import engine
+        name = (self.s.settings.get("chain_bindings") or {}).get(engine.binding_key(d.name, d.port))
+        if name:
+            parts.append(f"ASR chain: <b>{esc(name)}</b>" + ("" if name in engine.chain_names() else
+                         " <span style='color:#d43333'>(chain missing)</span>") + " (ASR Effects tab).")
         self.mic_summary.setText(" ".join(parts))
 
     def start(self, kind):
@@ -423,7 +415,7 @@ class MeasurePage(QWidget):
     def _personal_chain(self):
         if not self.current or self.current["kind"] != "voice":
             return
-        from .effects import personal_chain
+        from .engine import personal_chain
         room = self.s.active_room_profile()
         chain, notes = personal_chain(self.current.get("metrics") or {}, (room or {}).get("metrics"))
         label = self.current.get("device_label") or self.current["device"]

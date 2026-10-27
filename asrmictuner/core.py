@@ -27,7 +27,7 @@ UNIT_FILE = (
     / UNIT_NAME
 )
 
-# The "ASR Mic" virtual source (asrmic.py): a loopback from EasyEffects' output.
+# The "ASR Mic" source (asrmic.py, engine.py): the mic through its effects chain.
 ASR_MIC_NODE = "asr-mic-tuner.asr-mic"
 
 # Audio analysis ------------------------------------------------------------
@@ -504,8 +504,8 @@ class Device:
                 self.card = None
         self.card_name = props.get("alsa.card_name", "")
         self.alsa_name = props.get("alsa.name", "")
-        # The active port's description ("Internal Microphone"): EasyEffects
-        # keys its per-device autoload on it.
+        # The active port's description ("Internal Microphone"): chain
+        # bindings are per device and port.
         active = entry.get("active_port")
         self.port = next((p.get("description", "") for p in entry.get("ports") or []
                           if p.get("name") == active), "")
@@ -565,13 +565,13 @@ def default_source():
 
 
 # Capture streams that do not mean "someone is dictating": ours, level meters
-# in mixers, and EasyEffects' own pull from the hardware mic.
-_NOT_A_RECORDER = ("asr-mic-tuner", "pavucontrol", "pwvucontrol", "plasmashell", "easyeffects")
+# in mixers, and ASR Mic's own (passive) capture.
+_NOT_A_RECORDER = ("asr-mic-tuner", "pavucontrol", "pwvucontrol", "plasmashell")
 
 
 def recording_clients(device_name):
     """Applications other than meters currently recording from `device_name`,
-    or from a virtual source fed by it (EasyEffects' `easyeffects_source`,
+    or from a virtual source fed by it (ASR Mic,
     a noise-suppression node). Returns their application names.
 
     A virtual source whose upstream cannot be traced is counted too: the
@@ -586,7 +586,7 @@ def recording_clients(device_name):
             continue
         who = " ".join(str(props.get(k, "")) for k in
                        ("application.name", "application.id", "application.process.binary", "node.name")).lower()
-        if any(tag in who for tag in _NOT_A_RECORDER) or props.get("node.name", "").startswith("ee_"):
+        if any(tag in who for tag in _NOT_A_RECORDER):
             continue
         source = sources.get(out.get("source"), "")
         if not source or source.endswith(".monitor"):
@@ -595,8 +595,9 @@ def recording_clients(device_name):
             if source.startswith("alsa_input."):
                 continue                    # a different microphone
             if source not in upstream:
-                # ASR Mic is fed by a loopback, which pw-link cannot see through.
-                upstream[source] = resolve_hardware_for("easyeffects_source" if source == ASR_MIC_NODE else source)
+                # ASR Mic is a filter-chain: pw-link cannot see through it, but
+                # its capture node is linked straight from the microphone.
+                upstream[source] = resolve_hardware_for(f"{ASR_MIC_NODE}-capture" if source == ASR_MIC_NODE else source)
             if upstream[source] not in (None, device_name):
                 continue
         names.append(props.get("application.name") or props.get("node.name") or "unknown")
@@ -621,8 +622,7 @@ def set_source_percent(name, percent):
 
 def resolve_hardware_for(virtual_name):
     """Best effort: walk pw-link backwards from a virtual source to its input,
-    through any chain of filter nodes (EasyEffects' `easyeffects_source` sits
-    behind half a dozen `ee_sie_*` nodes).
+    through any chain of filter nodes.
 
     PipeWire node names do not always equal PulseAudio source names (a source
     `asr_mic` shows up as node `asr_mic_capture`), so matching is by prefix.

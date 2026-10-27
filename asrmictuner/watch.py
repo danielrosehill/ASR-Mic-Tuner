@@ -2,7 +2,7 @@
 listens only while another application is recording.
 
 Every few seconds the watcher asks PipeWire whether anything other than a
-level meter (or EasyEffects' own pull) is capturing the selected microphone.
+level meter (or ASR Mic's own passive capture) is capturing the selected microphone.
 While something is, it holds a capture of its own — Plasma's in-use
 indicator is already lit, so this adds nothing visible — and keeps the peaks
 of the speech blocks. Silence and room noise are gated out, so pauses in

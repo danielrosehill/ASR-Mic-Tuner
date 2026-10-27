@@ -1,57 +1,63 @@
 # ASR Mic: the processed microphone as its own input
 
-**ASR Mic** is a virtual source carrying the output of your EasyEffects input
-chain. Your raw microphone stays the system default and untouched. Point only your
+**ASR Mic** is an input that carries your microphone through its ASR effects chain.
+Your raw microphone stays the system default and is never altered. Point only your
 dictation or transcription app at "ASR Mic". Calls, recorders and everything else
 keep getting the raw signal.
 
 ```
-hardware mic ──► EasyEffects input chain ──► easyeffects_source ──► ASR Mic ──► dictation app
+hardware mic ──► [mono fold → high-pass → … → limiter] ──► ASR Mic (mono, 48 kHz) ──► dictation app
      │
      └──► default input: calls, recorders, everything else (raw, unprocessed)
 ```
 
-Turn it on in **ASR Effects → ASR Mic → Create ASR Mic**. Code: `asrmictuner/asrmic.py`.
+Turn it on in **ASR Effects → ASR Mic → Create ASR Mic**, or let **Quick setup**
+turn it on. Code: `asrmictuner/asrmic.py` (supervisor and unit) and
+`asrmictuner/engine.py` (the chain). The effects themselves are described in
+`docs/effects.md`.
 
 ## How it works
 
 - A systemd **user** unit, `~/.config/systemd/user/asr-mic-tuner-asr-mic.service`
   (`WantedBy=pipewire.service`), runs `asr-mic-tuner --asr-mic`.
-- That supervisor checks every 3 s whether `easyeffects_source` exists. While it does,
-  it runs one `pw-loopback`:
-  - capture side `asr-mic-tuner.asr-mic-capture`, with `target.object=easyeffects_source`,
-    `node.passive=true` and `node.dont-fallback=true`;
-  - playback side `asr-mic-tuner.asr-mic`, with `media.class=Audio/Source` and
-    `node.description="ASR Mic"`.
-- **When EasyEffects is not running, ASR Mic does not exist.** It never falls back to
-  the raw mic, so a broken chain shows up as a missing input instead of silently
-  unprocessed audio. What your app does when its chosen input disappears (usually it
-  falls back to the default) is up to the app.
-- **Pause** (ASR Effects) or **ASR Mic running** (tray menu) stops the unit for now,
-  for a call for example. It stays enabled, so it starts again at the next login, or
-  when you resume it.
-- Removing it (untick the box) disables and deletes the unit. Nothing else is touched.
+- Every 3 s that supervisor picks the microphone that feeds ASR Mic. That is the one
+  chosen under *Fed by*, or else the hardware behind the default input. It then
+  loads the chain bound to that mic and port and renders a PipeWire filter-chain
+  config to `~/.config/asr-mic-tuner/asr-mic-chain.conf`. It keeps exactly one
+  `pipewire -c <that file>` process running, and restarts it when the config text
+  changes: a different mic, chain, setting, bypass, or a newly installed plugin.
+  A restart takes about a second.
+- Capture node `asr-mic-tuner.asr-mic-capture`: `target.object=<mic>`,
+  `node.passive=true`, `node.dont-fallback=true`. Being passive, it does not keep the
+  mic open, so Plasma's in-use indicator lights only when something actually
+  records from ASR Mic. With `dont-fallback`, an unplugged mic never turns into
+  another mic.
+- Output node `asr-mic-tuner.asr-mic`, "ASR Mic": `media.class=Audio/Source`, mono,
+  48 kHz (RNNoise and DeepFilterNet both require 48 kHz).
+- The supervisor writes what it is running to
+  `~/.config/asr-mic-tuner/asr-mic-state.json`: the device, the chain, the bypass
+  state, and any effects skipped because a plugin is missing. The tab shows this.
 
-Why a supervisor: `pw-loopback` exits with status 0 when its target disappears, and
-exits at once if started without one (because of `node.dont-fallback`). So a plain
-`Restart=` policy either never brings it back or restarts it in a loop. Verified on
-2026-10-27 with PipeWire 1.6.2 and EasyEffects 8.3.0 (Flatpak): ASR Mic appeared
-within one poll of EasyEffects starting, carried audio, disappeared when EasyEffects
-quit, and came back when it restarted.
+## Turning it off for a while
+
+- **Pause** (ASR Effects) or **ASR Mic running** (tray menu) stops the unit for now,
+  for a call for example. It stays enabled, so it starts again at the next login,
+  or when you resume it.
+- **Bypass effects** keeps ASR Mic but passes the plain mic (folded to mono), for
+  A/B comparison.
+- Unticking **Create ASR Mic** disables and deletes the unit. Nothing else is touched.
+
+## Names
 
 Node names start with `asr-mic-tuner.` deliberately:
-- The quiet-mic alert recognises the loopback's own capture and does not treat it as
-  "someone is dictating".
-- An app recording from ASR Mic is attributed to the hardware mic behind EasyEffects
-  (`core.recording_clients`).
-- The older sibling project `dictamic` creates a source named `asr_mic`. These names
-  never collide with it.
+- The quiet-mic alert and the auto gain recognise ASR Mic's own passive capture and
+  do not treat it as "someone is dictating".
+- An app recording from ASR Mic is attributed to the mic that feeds it
+  (`core.recording_clients` walks `pw-link` back from the capture node).
+- The older sibling project `dictamic` creates a source named `asr_mic`. These
+  names never collide with it.
 
-## Keep the raw mic as the default
-
-EasyEffects follows the default input unless it is pinned to a device. If you made
-ASR Mic (or `easyeffects_source`) the default, EasyEffects would try to process its
-own output. Leave the hardware mic as the default, and choose ASR Mic per app.
+Keep the raw microphone as the system default and choose ASR Mic per app.
 
 ## Two VADs are worse than one
 

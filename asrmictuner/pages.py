@@ -369,7 +369,7 @@ class ProfilesPage(QWidget):
         p = self._selected_profile(self.voice_table)
         if not p:
             return
-        from .effects import personal_chain
+        from .engine import personal_chain
         room = None
         if self.s.device and p["device"] == self.s.device.name:
             room = (self.s.active_room_profile() or {}).get("metrics")

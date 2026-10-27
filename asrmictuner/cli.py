@@ -114,7 +114,7 @@ def main(argv=None):
     parser.add_argument("--delay", type=float, default=0.0,
                         help="seconds to wait before --restore, to let wireplumber settle")
     parser.add_argument("--asr-mic", action="store_true",
-                        help="run the ASR Mic loopback while EasyEffects is up (used by its user unit)")
+                        help="run the ASR Mic effects chain supervisor (used by its user unit)")
     args = parser.parse_args(argv)
 
     from .migrate import migrate

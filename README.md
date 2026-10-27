@@ -47,10 +47,10 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 | Tab | What's there |
 |---|---|
 | **Monitor** | The analog gain in dB, colour-zoned by the device's own curve, with − / + buttons that move one hardware step (0.75 dB on HDA). Per-channel meters with peak hold and the −18…−10 dBFS target band, and a live verdict ("too loud — needs −6 dB", with a **Fix it** button). It also counts clipped samples and runs, shows DC offset, channel balance and an estimated speech-to-noise ratio, and has a live spectrum with the active room profile overlaid. Calibration comes in three lengths, Quick, Standard and Thorough (3+8 s, 5+15 s, 10+30 s), and **Log reading** saves the current state to History. |
-| **Measure** | **Mic test**: choose a text to read aloud (30 s, 1 min, 2 min or 3 min, several of each), read it at your normal dictation distance, and press *Done reading*. The result is an ASR readiness score, the problems that would hurt recognition (level, clipping, SNR, narrow bandwidth, rumble, plosives, sibilance, channel imbalance, **dropouts** from a gate or VAD muting speech, and **level spread and drift** over longer reads), and a one-click **Apply recommended gain**, which sets the gain and remembers it for that microphone. **Save as speaker profile** keeps the test as yours on that mic. **Build personal chain** turns it into an EasyEffects chain fitted to your voice: a high-pass 30% under your lowest pitch, a low-pass at 8 kHz (what 16 kHz recognisers keep anyway), a gentle gate set between your room and your speech (only when the SNR allows), auto gain that ignores the room, and a limiter. It uses plain DSP with no neural denoiser, opens in ASR Effects for review, and explains each choice. A "This microphone" panel shows that mic's last test, its remembered gain and its bound ASR chain. **Room tone** (5–120 s): noise floor (p10, RMS, A-weighted), stationarity, transients, rumble, speech-band and hiss energy, mains hum (50/60 Hz plus harmonics), spectral flatness, 1/3-octave bands, and a sox noise profile for later cleanup. The mic test measures speech peak and RMS, SNR against the active room profile, crest factor, dynamic range, pitch (F0) median and range, spectral centroid and tilt, bandwidth (it catches Bluetooth HFP narrowband), rumble, presence, sibilance, plosive pops and channel imbalance. All of that feeds an **ASR readiness score** from 0 to 100 with named deductions, plus a suggested gain. |
+| **Measure** | **Mic test**: choose a text to read aloud (30 s, 1 min, 2 min or 3 min, several of each), read it at your normal dictation distance, and press *Done reading*. The result is an ASR readiness score, the problems that would hurt recognition (level, clipping, SNR, narrow bandwidth, rumble, plosives, sibilance, channel imbalance, **dropouts** from a gate or VAD muting speech, and **level spread and drift** over longer reads), and a one-click **Apply recommended gain**, which sets the gain and remembers it for that microphone. **Save as speaker profile** keeps the test as yours on that mic. **Build personal chain** turns it into an ASR Mic chain fitted to your voice: a high-pass 30% under your lowest pitch, a low-pass at 8 kHz (what 16 kHz recognisers keep anyway), a gentle gate set between your room and your speech (only when the SNR allows), auto gain that ignores the room, and a limiter. It adds a hum notch if your room profile found mains hum, uses plain DSP with no neural denoiser, opens in ASR Effects for review, and explains each choice. A "This microphone" panel shows that mic's last test, its remembered gain and its bound ASR chain. **Room tone** (5–120 s): noise floor (p10, RMS, A-weighted), stationarity, transients, rumble, speech-band and hiss energy, mains hum (50/60 Hz plus harmonics), spectral flatness, 1/3-octave bands, and a sox noise profile for later cleanup. The mic test measures speech peak and RMS, SNR against the active room profile, crest factor, dynamic range, pitch (F0) median and range, spectral centroid and tilt, bandwidth (it catches Bluetooth HFP narrowband), rumble, presence, sibilance, plosive pops and channel imbalance. All of that feeds an **ASR readiness score** from 0 to 100 with named deductions, plus a suggested gain. |
 | **History** | Every measurement, with device, gain, location, notes, sample file and AI review. Filter by device or kind, play a sample, ask the AI, promote a measurement to a profile, or export everything as JSON. |
 | **Profiles** | **Gain presets** per microphone ("office", "living room"); the ★ preset is the remembered gain that Restore, the tray and the login unit reapply. **Room noise profiles**: the active one per device is the SNR reference and the spectrum overlay, and each has a "copy sox cleanup command" action. **Voice profiles** as well. |
-| **ASR Effects** | A small front end to [EasyEffects](https://github.com/wwmm/easyeffects) for the **input side only**. **Quick setup** is one button: pick a chain and it is saved, bound to this microphone, and loaded. **ASR Mic** publishes the processed audio as its own input while the raw mic stays the default ([`docs/asr-mic.md`](docs/asr-mic.md)). Under *Customise the chain* are ten speech-relevant effects and an optional **voice activity gate**, marked with a caution: most transcription apps run their own VAD, and two in series clip words. The full list of effects: (high-pass, mono fold, gate, RNNoise, DeepFilterNet, Speex, auto gain, compressor, de-esser, limiter), each with a few settings, and chain templates: "Dictation standard" and "Noisy room" on DeepFilterNet for desktop CPUs, a "low CPU" RNNoise twin of each for laptops, "Laptop array to mono", "Level only", and "None" (a pass-through preset). You can open, save and load input presets, bypass everything for A/B, and **bind a preset to a microphone and port** (EasyEffects autoload). Details: [`docs/easyeffects.md`](docs/easyeffects.md). |
+| **ASR Effects** | Input chains for dictation, run **inside PipeWire** by ASR Mic Tuner itself, and published as **ASR Mic**, a separate mono input. The raw mic stays the default and untouched ([`docs/asr-mic.md`](docs/asr-mic.md)). **Quick setup** is one button: pick a chain and it is saved, bound to this microphone, and ASR Mic is turned on. Templates: "Dictation standard" and "Noisy room" (DeepFilterNet, for desktop CPUs), a "low CPU" RNNoise version of each for laptops, "Simple clean-up" (nothing to download), "Level only" and "None". Under *Customise the chain*: high-pass, low-pass, hum notch, EQ band, gate, loudness auto gain (30 s, gated), compressor, limiter, RNNoise, DeepFilterNet, and an optional **voice activity gate** marked with a caution. **Bypass** gives you A/B, **Pause** turns it off for a call, and each mic and port keeps its own chain. The neural denoisers are optional downloads from their maintainers' releases, checked against pinned checksums. Details: [`docs/effects.md`](docs/effects.md). |
 | **Settings** | OpenRouter key and model, an option to send the audio as well as the numbers, tray behaviour, start at login, the quiet-mic alert, auto-restore on drift, and the data folder. |
 
 | Tray pop-up | Room tone analysis |
@@ -70,15 +70,14 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 
 ## Where processing happens
 
-The raw microphone is never altered. ASR Mic Tuner installs nothing into `/etc` and
-does no DSP of its own. It observes, sets gain, and records to disk only when you ask.
-The quiet-mic alert analyses in memory and stores nothing.
+The raw microphone is never altered. ASR Mic Tuner observes it, sets its gain, and
+records to disk only when you ask. The quiet-mic alert and the ASR auto gain analyse in
+memory and store nothing. Nothing is installed into `/etc`.
 
-Processing is opt-in and belongs to EasyEffects. The ASR Effects tab writes
-EasyEffects presets and bindings and asks EasyEffects to load them. The optional
-**ASR Mic** is a loopback of EasyEffects' output, so the processed signal is a separate
-input and the raw mic stays the default. Fix the gain first, then add only the chain
-your room needs. The sibling project [`dictamic`](https://github.com/danielrosehill/dictamic)
+Processing is opt-in and happens only on **ASR Mic**, a separate input that ASR Mic Tuner
+runs inside PipeWire with the chain bound to your mic. The raw mic stays the default, so
+only apps you point at ASR Mic get the chain. Fix the gain first, then add only what your
+room needs. The sibling project [`dictamic`](https://github.com/danielrosehill/dictamic)
 measured raw audio at *correct* gain with a **9 dB lower noise floor** than a full
 processing chain, so a chain is not a substitute for correct gain.
 
@@ -106,7 +105,7 @@ Then run `asr-mic-tuner`, or `asr-mic-tuner --tray` to start in the tray only (w
 Tested on Ubuntu 26.04; it needs only archive packages (PyQt6, numpy), so 24.04 and later should work. It's built for KDE Plasma and works on any desktop with a StatusNotifierItem tray.
 
 Depends: `python3-pyqt6 python3-numpy pulseaudio-utils alsa-utils`.
-Recommends: `sox` (FLAC samples and noise profiles), `ffmpeg` (audio for AI), `libnotify-bin` (quiet-mic alert without a tray),
+Recommends: `sox` (FLAC samples and noise profiles), `ffmpeg` (audio for AI), `libnotify-bin` (quiet-mic alert without a tray), `swh-plugins` (gate, compressor, limiter) and `libspa-0.2-modules-extra` (auto gain) for ASR Effects,
 `pipewire-bin` (playback), `libkf6config-bin` and `qdbus-qt6` (KWin pop-up placement).
 
 **Formerly Mic Monitor (`mic-monitor`, v0.3) and `micscope` (v0.1–0.2).** The `asr-mic-tuner`
@@ -122,7 +121,7 @@ asr-mic-tuner --measure room --seconds 15 --location "living room"   # records, 
 asr-mic-tuner --measure voice --seconds 20
 asr-mic-tuner --history [--json]              # the measurement log
 asr-mic-tuner --restore [--delay 8]           # reapply remembered gain (used by the login unit)
-asr-mic-tuner --asr-mic                       # ASR Mic supervisor (used by its user unit)
+asr-mic-tuner --asr-mic                       # run ASR Mic's chain (used by its user unit)
 ```
 
 ## Files
@@ -133,9 +132,11 @@ asr-mic-tuner --asr-mic                       # ASR Mic supervisor (used by its 
 | `~/.config/asr-mic-tuner/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
 | `~/.local/share/asr-mic-tuner/history.db` | SQLite: `measurements`, `profiles` |
 | `~/.local/share/asr-mic-tuner/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
-| `~/.config/systemd/user/asr-mic-tuner-asr-mic.service` | ASR Mic supervisor (only when you turn ASR Mic on) |
+| `~/.config/systemd/user/asr-mic-tuner-asr-mic.service` | ASR Mic (only when you turn it on) |
 | `~/.config/autostart/asr-mic-tuner.desktop` | start in the tray at login (Settings or tray menu) |
-| `~/.var/app/com.github.wwmm.easyeffects/data/easyeffects/{input,autoload/input}/` | EasyEffects presets and mic bindings written by ASR Effects (native install: `~/.local/share/easyeffects/`) |
+| `~/.config/asr-mic-tuner/chains/*.json` | saved ASR chains (bindings are in `settings.json`) |
+| `~/.config/asr-mic-tuner/asr-mic-chain.conf`, `asr-mic-state.json` | the PipeWire config ASR Mic is running, and what it is running |
+| `~/.local/share/asr-mic-tuner/plugins/` | RNNoise and DeepFilterNet, if you fetched them |
 | `~/.config/kwinrulesrc` group `asr-mic-tuner-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |
 
 ## Build
@@ -152,4 +153,4 @@ python3 -m asrmictuner       # run from the source tree
 - [`docs/analysis.md`](docs/analysis.md): what every metric means and the thresholds behind the findings and score
 - [`docs/kde-integration.md`](docs/kde-integration.md): tray, pop-up placement on Wayland, and the microphone-in-use indicator
 - [`docs/asr-mic.md`](docs/asr-mic.md): the ASR Mic virtual source, why the raw mic stays the default, and the VAD caution
-- [`docs/easyeffects.md`](docs/easyeffects.md): EasyEffects preset, autoload and CLI formats as used by the ASR Effects tab, verified against 8.3.0
+- [`docs/effects.md`](docs/effects.md): every effect, what runs it, the plugin downloads and their checksums, and test results

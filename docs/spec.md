@@ -58,11 +58,11 @@ the available meters looked fine.
 
 ## 3. Non-goals
 
-- **No audio processing, ever.** ASR Mic Tuner inserts no filter, no virtual
-  source, no AGC, no noise suppression. It observes, and it sets gain. The
-  audio graph must be byte-identical before and after running it. (Since
-  v0.5 the ASR Effects tab writes *EasyEffects* presets and asks EasyEffects
-  to load them; see §11 for where that line sits.)
+- **The raw microphone is never processed.** ASR Mic Tuner observes it and
+  sets its gain. Since v2.0 it can also publish a *separate* input, ASR Mic,
+  that carries the mic through an input chain (§14). That is opt-in, and the
+  raw mic stays the default and stays untouched. With ASR Mic off, the
+  audio graph is byte-identical before and after running the app.
 - Not an equaliser and not a routing tool (`helvum`/`qpwgraph` already do
   routing). It records **only on explicit request** (Measure tab, `--measure`),
   for analysis and for noise profiles; it is not a general recorder.
@@ -195,7 +195,7 @@ a session of manual `parecord` and `sox` work:
 - Enumerate capture sources; mark hardware (`alsa_input.*`) distinctly from
   virtual/processed nodes.
 - Analog gain exists **only** on hardware devices. If the user selects a
-  virtual source (e.g. `asr_mic`, `easyeffects_source`), show
+  virtual source (e.g. a noise-suppression node or ASR Mic), show
   *"processed stream — no analog gain"*, resolve the underlying hardware
   device by walking `pw-link` and offer to switch to it.
 - Warn when the **system default source is a virtual node** while the user is
@@ -265,7 +265,7 @@ GTK3 because the target desktop is Plasma (`docs/kde-integration.md`).
 ## 9. Open questions
 
 - Should ASR Mic Tuner offer to *disable* competing processing it detects
-  (`asr_mic`, `easyeffects_source` in the graph), or only report it? Leaning
+  (other noise-suppression nodes in the graph), or only report it? Leaning
   report-only, per the no-side-effects goal.
 - `python3-alsaaudio` (packaged, 0.10.0) would replace `amixer` parsing with a
   real binding. Cleaner, but adds a dependency and the `amixer` commands above
@@ -325,15 +325,7 @@ something on screen needs it.
   waits at least 30 min. A gain change or device switch restarts the window.
   This amends §3's "records only on explicit request": the watcher analyses
   but never stores.
-- **ASR Effects tab** (`effects.py`, `fxpage.py`, `docs/easyeffects.md`): a
-  small front end to EasyEffects for the input side only. It has a library
-  of ten speech-relevant effects (high-pass, mono fold, gate, RNNoise,
-  DeepFilterNet, Speex, auto gain, compressor, de-esser, limiter) with a few
-  settings each, nine chain templates (DeepFilterNet ones for desktops, each with a "low CPU" RNNoise twin, and a "None" pass-through), open/save/load of input presets, global
-  bypass, and per-microphone autoload bindings. The §3 line holds for ASR Mic
-  Tuner itself: it writes EasyEffects' files and calls its CLI, and EasyEffects
-  owns the processing and the nodes. Acceptance check §8.5 still applies with
-  EasyEffects not running.
+- **ASR Effects tab**: first version. Superseded by the engine in §14.
 
 ## 12. v1.0 additions (2026-10-27)
 
@@ -350,18 +342,12 @@ something on screen needs it.
   `LEVEL_*`. *Apply recommended gain* is computed from the gain the sample was
   taken at. It sets the gain **and remembers it** for the device, or sets
   software volume on devices with no analog control. The "This microphone" panel
-  shows that device's last test, remembered gain and bound EasyEffects preset.
-- **ASR Effects** gets *Quick setup* (template → preset `ASR <template>` →
-  bind to the current mic and port → start EasyEffects if needed → load), a
-  collapsed *Customise* editor, a "None" pass-through template, low-CPU RNNoise
-  twins of the DeepFilterNet chains, and a **VAD** library entry (RNNoise with
-  `enable-vad`). The VAD carries a caution wherever it is on: two VADs in series
-  (chain and transcription app) clip words.
-- **ASR Mic** (`asrmic.py`, `docs/asr-mic.md`): an opt-in user unit that runs
-  a supervised `pw-loopback` from `easyeffects_source` into a virtual source
-  "ASR Mic" (`asr-mic-tuner.asr-mic`). The raw mic stays default. Relative to §3,
-  this is the only node ASR Mic Tuner creates. It carries no processing of its own,
-  exists only while the user has turned it on, and is removed with its unit.
+  shows that device's last test, remembered gain and bound ASR chain.
+- **ASR Effects** gets *Quick setup*, a collapsed *Customise* editor, a
+  "None" template, low-CPU RNNoise versions of the DeepFilterNet chains, and a
+  **VAD** entry that carries a caution wherever it is on: two VADs in series
+  (chain and transcription app) clip words. **ASR Mic** first appears.
+  Both were reimplemented in v2.0 (§14).
 
 ## 13. v1.1 additions (2026-10-27)
 
@@ -389,9 +375,54 @@ something on screen needs it.
   SNR ≥ 20 dB. Auto gain uses −20 LUFS, a 30 s history and a silence threshold of
   noise + 6 dB, clamped to −80…−30. A −3 dB limiter goes last. Each decision comes
   with a sentence of reasoning, shown in ASR Effects, where the chain opens for
-  review. Nothing is saved until the user saves it. Verified 2026-10-27: a
-  generated personal chain (two `filter` instances, gate, autogain, limiter)
-  loaded in EasyEffects 8.3.0 and linked in order.
-- The EasyEffects Auto gain library entry now starts with a 30 s history
-  (`maximum-history`, EasyEffects default 15 s).
+  review. Nothing is saved until the user saves it. In v2.0 it builds
+  engine effects (§14) and adds a hum notch when the room profile found mains hum.
+
+## 14. v2.0: our own effects engine (2026-10-27)
+
+ASR Mic Tuner now runs input chains itself, inside PipeWire, and depends on
+no other effects application. Code: `engine.py` (catalogue, graph generator,
+chains, bindings, plugin downloads, personal chain), `asrmic.py` (supervisor
+and user unit), `fxpage.py` (the tab). Reference: `docs/effects.md`.
+
+- **How it runs.** The user unit `asr-mic-tuner-asr-mic.service` runs
+  `asr-mic-tuner --asr-mic`. Every 3 s it picks the feeding mic (the one chosen
+  in the tab, else the hardware behind the default input), loads the chain
+  bound to that mic and port, and renders a PipeWire `filter-chain` config to
+  `~/.config/asr-mic-tuner/asr-mic-chain.conf`. It keeps one
+  `pipewire -c <that file>` process running, and restarts it when the text
+  changes. The capture side is passive and targets the mic with
+  `node.dont-fallback`. The output is "ASR Mic" (`asr-mic-tuner.asr-mic`),
+  mono, 48 kHz.
+- **Effects and where they come from.** High-pass, low-pass, hum notch and EQ
+  are PipeWire builtin biquads. Mono fold is the builtin `mixer`. Auto gain is
+  PipeWire's `ebur128` plugin: gated loudness over N s → `lufs2gain` → `clamp`
+  (±max) → `linear`. Gate, compressor and limiter are swh-plugins LADSPA
+  (`gate_1410`, `sc4m_1916`, `fast_lookahead_limiter_1913`). RNNoise and
+  DeepFilterNet are LADSPA builds downloaded on request from
+  werman/noise-suppression-for-voice v1.10 and Rikorose/DeepFilterNet v0.5.6,
+  pinned by SHA-256.
+- **PipeWire 1.6.2 builtin `noisegate` is unusable**: its "Level" control
+  defaults to NaN (meaning "measure the input"), but the filter-graph clamps
+  every default into [min, max] = [0, 0], so the gate sees level 0 and never
+  opens. Verified with a −36 dBFS tone (output silent). The swh gate is used
+  instead.
+- **Verified with test tones through a temporary null sink, 2026-10-27**
+  (target `<sink>` + `stream.capture.sink=true`; a `.monitor` name does not
+  resolve as `target.object`):
+  - auto gain (target −20 LUFS, ±12 dB): −46.5 LUFS in → +12.0 dB;
+    −26.4 → +5.8 (expected about +6.4); −12.5 → −8.2 (about −7.5);
+  - gate (−50 dBFS, −12 dB): a −66 dBFS tone → −12.0 dB; a −36 dBFS tone → +0.1 dB;
+  - limiter (−3 dB): a tone pushed to about +3 dBFS → −3.0 dBFS peak;
+  - high-pass 100 Hz: −3.1 dB at 100 Hz; low-pass 8 kHz: −3 dB at 8 kHz, −19 dB at 12 kHz.
+  Lesson: check that ASR Mic exists before recording from it, because
+  `parec --device=<missing>` silently records the default mic.
+- **CPU on the reference laptop (Ryzen, 16 threads)**: "Dictation standard"
+  (DeepFilterNet) used about 50 % of one core and logged one underrun at
+  start; the RNNoise version used about 10 %.
+- **Supervisor checks, 2026-10-27**: it ran the bound chain, rebound to
+  another chain within one poll, attributed a recorder on ASR Mic to the
+  feeding mic (`core.recording_clients` walks `pw-link` back from the capture
+  node), and left nothing running after it stopped.
+- **Breaking change**: chains from the v1.x ASR Effects tab do not carry over.
 

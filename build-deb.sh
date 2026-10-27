@@ -40,8 +40,7 @@ Conflicts: micscope, mic-monitor
 Replaces: micscope, mic-monitor
 Provides: micscope, mic-monitor
 Depends: python3, python3-pyqt6, python3-numpy, pulseaudio-utils, alsa-utils
-Recommends: sox, ffmpeg, pipewire-bin, libkf6config-bin, qdbus-qt6, libnotify-bin
-Suggests: easyeffects
+Recommends: sox, ffmpeg, pipewire-bin, libkf6config-bin, qdbus-qt6, libnotify-bin, swh-plugins, libspa-0.2-modules-extra
 Maintainer: Daniel Rosehill <public@danielrosehill.com>
 Homepage: https://github.com/danielrosehill/ASR-Mic-Tuner
 Description: Microphone monitor for dictation: true analog gain, level, noise, voice
