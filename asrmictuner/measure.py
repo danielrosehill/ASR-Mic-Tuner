@@ -1,35 +1,33 @@
-"""Measure tab: record room tone or a voice sample, analyse it, keep it.
+"""Measure tab: the mic test (read a passage aloud), and room tone.
 
-Every recording lands in History automatically, with its sample on disk.
-"Save as profile" promotes one to a named room or voice profile; the active
-room profile becomes the noise reference for voice SNR and the overlay on
-the live spectrum.
+The mic test is the main event: pick a text of the length you want (30 s to
+3 min, passages.py), read it at your normal dictation distance, and stop when
+you reach the end. The result scores the sample for ASR, names what would
+hurt recognition, and offers the gain that puts speech in the target band,
+applied and remembered for this microphone in one click.
+
+Every recording lands in History with its sample on disk, tagged with the
+device, so each microphone keeps its own results and recommendations.
 """
 
 import time
 
 from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QProgressBar,
+    QComboBox, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QProgressBar,
     QPushButton, QSpinBox, QTextBrowser, QVBoxLayout, QWidget,
 )
 
-from . import analysis, store
-from .core import fmt_gain
+from . import analysis, passages, store
+from .core import CALIB_TARGET_PEAK_DB, fmt_gain, fmt_level
 from .qtutil import (
     ask_ai, ask_text, ai_html, esc, findings_html, metrics_html, run_async, wrap_label,
 )
 from .widgets import BandChart, ScoreBadge
 
-PASSAGE = (
-    "Please read this aloud at your normal dictation pace and distance. "
-    "<i>“The quick check starts now. I usually dictate emails, notes and long documents, "
-    "sometimes six or seven thousand words a day. Thursday's schedule has three meetings: "
-    "a budget review at nine fifteen, a call with the Zurich office, and a design "
-    "session that will probably run late. Should we ship the fix today, or wait for "
-    "the second opinion? Either way, please send me the figures — forty-two, "
-    "eighty-nine, and one hundred and sixteen — before lunch.”</i>"
-)
+SLACK = 1.5             # recording runs up to this × the passage's nominal length
+MIN_VOICE_S = 5.0       # "Done reading" before this cancels instead
 
 
 class MeasurePage(QWidget):
@@ -40,14 +38,53 @@ class MeasurePage(QWidget):
         self.current = None
 
         root = QVBoxLayout(self)
-        top = QHBoxLayout()
+        self.mic_box = QGroupBox("This microphone")
+        ml = QVBoxLayout(self.mic_box)
+        self.mic_summary = wrap_label()
+        ml.addWidget(self.mic_summary)
+        root.addWidget(self.mic_box)
 
-        room = QGroupBox("Room tone")
+        top = QHBoxLayout()
+        voice = QGroupBox("Mic test: read this aloud")
+        vl = QVBoxLayout(voice)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Text"))
+        self.passage = QComboBox()
+        for p in passages.PASSAGES:
+            self.passage.addItem(passages.label(p), p[0])
+        index = self.passage.findData(self.s.settings.get("voice_passage", "60-email"))
+        self.passage.setCurrentIndex(max(0, index))
+        self.passage.currentIndexChanged.connect(self._show_passage)
+        row.addWidget(self.passage, 1)
+        vl.addLayout(row)
+        self.reader = QTextBrowser()
+        font = QFont(self.reader.font())
+        font.setPointSizeF(font.pointSizeF() * 1.25)
+        self.reader.setFont(font)
+        self.reader.setMinimumHeight(170)
+        vl.addWidget(self.reader, 1)
+        vl.addWidget(wrap_label(
+            "<small>Sit as you do when dictating and read at your normal pace. Press <b>Done reading</b> "
+            "at the end. Longer texts show whether your level stays steady.</small>"))
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.voice_cancel = QPushButton("Cancel")
+        self.voice_cancel.clicked.connect(lambda: self._cancel("Cancelled."))
+        self.voice_cancel.hide()
+        row.addWidget(self.voice_cancel)
+        self.voice_button = QPushButton("Start reading")
+        self.voice_button.setDefault(True)
+        self.voice_button.clicked.connect(self._voice_clicked)
+        row.addWidget(self.voice_button)
+        vl.addLayout(row)
+        top.addWidget(voice, 3)
+
+        room = QGroupBox("Room tone (optional, first)")
         rl = QVBoxLayout(room)
         rl.addWidget(wrap_label(
-            "Stay silent and let the room sound as it normally does while you dictate — "
-            "fans, traffic, the fridge. Saves the noise floor, its spectrum, hum and hiss, "
-            "and a sample for later noise reduction."))
+            "Stay silent and let the room sound as it normally does while you dictate: "
+            "fans, traffic, the fridge. Saved as a room profile, it makes the mic test's "
+            "signal-to-noise figure exact instead of estimated from your pauses."))
         rl.addStretch(1)
         row = QHBoxLayout()
         row.addWidget(QLabel("Seconds"))
@@ -61,22 +98,6 @@ class MeasurePage(QWidget):
         row.addWidget(self.room_button)
         rl.addLayout(row)
         top.addWidget(room, 1)
-
-        voice = QGroupBox("Voice sample")
-        vl = QVBoxLayout(voice)
-        vl.addWidget(wrap_label(PASSAGE))
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Seconds"))
-        self.voice_seconds = QSpinBox()
-        self.voice_seconds.setRange(10, 120)
-        self.voice_seconds.setValue(int(self.s.settings.get("voice_seconds", 20)))
-        row.addWidget(self.voice_seconds)
-        row.addStretch(1)
-        self.voice_button = QPushButton("Record voice")
-        self.voice_button.clicked.connect(lambda: self.start("voice"))
-        row.addWidget(self.voice_button)
-        vl.addLayout(row)
-        top.addWidget(voice, 1)
         root.addLayout(top)
 
         prow = QHBoxLayout()
@@ -115,7 +136,9 @@ class MeasurePage(QWidget):
         brow = QHBoxLayout()
         self.profile_button = QPushButton("Save as profile…")
         self.profile_button.clicked.connect(self._save_profile)
-        self.apply_button = QPushButton("Apply suggested gain")
+        self.apply_button = QPushButton("Apply recommended gain")
+        self.apply_button.setToolTip("Sets the gain and remembers it for this microphone "
+                                     "(what Restore, the tray and the login unit reapply)")
         self.apply_button.clicked.connect(self._apply_suggestion)
         self.play_button = QPushButton("Play")
         self.play_button.clicked.connect(lambda: self.current and store.play(self.current.get("sample_path")))
@@ -135,11 +158,67 @@ class MeasurePage(QWidget):
         self.result_box.hide()
 
         self.s.device_changed.connect(self._on_device)
+        self.s.history_changed.connect(self._update_mic_summary)
+        self.s.gain_changed.connect(self._update_mic_summary)
+        self._show_passage()
+        self._update_mic_summary()
 
     # -- recording --
     def _on_device(self):
         if self.recording:
             self._cancel("Cancelled — device changed.")
+        self._update_mic_summary()
+
+    def _show_passage(self):
+        p = passages.by_id(self.passage.currentData())
+        self.reader.setHtml(f"<p style='line-height:140%'>{esc(p[3])}</p>")
+        self.s.settings["voice_passage"] = p[0]
+
+    def _voice_clicked(self):
+        if self.recording and self.recording["kind"] == "voice":
+            self._finish()
+        else:
+            self.start("voice")
+
+    def _update_mic_summary(self):
+        """The per-microphone link: last mic test, what it recommended,
+        what is remembered now, and the bound effects preset."""
+        d = self.s.device
+        if d is None:
+            self.mic_summary.setText("No microphone selected.")
+            return
+        self.mic_box.setTitle(f"This microphone: {d.description}")
+        parts = []
+        last = self.s.store.measurements(device=d.name, kind="voice", limit=1)
+        if last:
+            m = last[0]
+            mm = m.get("metrics") or {}
+            r = mm.get("readiness") or {}
+            parts.append(
+                f"Last mic test {esc(m['created'][:16].replace('T', ' '))}: <b>{r.get('score', '—')}</b> "
+                f"({esc(r.get('grade', ''))}), speech peaks {fmt_level(mm.get('speech_peak_p95_dbfs'))} "
+                f"at gain {fmt_gain(m.get('gain_db'))}.")
+        else:
+            parts.append("No mic test yet for this microphone. Read a text below to get one.")
+        remembered = self.s.remembered()
+        if remembered is not None and self.s.curve is not None:
+            parts.append(f"Remembered gain {fmt_gain(self.s.curve.db(remembered))} (index {remembered}).")
+        elif self.s.soft_only:
+            parts.append("No analog gain control: adjustments use software volume.")
+        try:
+            from .effects import EasyEffects
+            ee = EasyEffects()
+            bound = [b for b in ee.bindings()
+                     if b.get("device") == d.name and b.get("device-profile", "") == (d.port or "")]
+            known = set(ee.presets())
+        except Exception:                    # EasyEffects absent or unreadable: not this tab's problem
+            bound, known = [], set()
+        if bound:
+            name = bound[0].get("preset-name", "")
+            parts.append(f"ASR chain: <b>{esc(name)}</b>" + ("" if name in known else
+                         " <span style='color:#d43333'>(preset missing: nothing loads)</span>")
+                         + " (ASR Effects tab).")
+        self.mic_summary.setText(" ".join(parts))
 
     def start(self, kind):
         if self.recording:
@@ -149,25 +228,53 @@ class MeasurePage(QWidget):
         if not a or not a.alive:
             self.state.setText("<span style='color:#d43333'>No capture stream.</span>")
             return
-        seconds = self.room_seconds.value() if kind == "room" else self.voice_seconds.value()
-        self.s.settings[f"{kind}_seconds"] = seconds
+        if kind == "room":
+            seconds = self.room_seconds.value()
+            self.s.settings["room_seconds"] = seconds
+            nominal = seconds
+        else:
+            nominal = passages.by_id(self.passage.currentData())[2]
+            seconds = nominal * SLACK
         self.s.save_settings()
-        self.recording = {"kind": kind, "until": time.monotonic() + seconds, "length": seconds}
-        (self.room_button if kind == "room" else self.voice_button).setText("Cancel")
-        (self.voice_button if kind == "room" else self.room_button).setEnabled(False)
+        now = time.monotonic()
+        self.recording = {"kind": kind, "start": now, "until": now + seconds, "length": seconds, "nominal": nominal}
+        if kind == "room":
+            self.room_button.setText("Cancel")
+            self.voice_button.setEnabled(False)
+            self.state.setText("<b>Stay silent…</b>")
+        else:
+            self.voice_button.setText("Done reading")
+            self.voice_cancel.show()
+            self.passage.setEnabled(False)
+            self.room_button.setEnabled(False)
+            self.reader.verticalScrollBar().setValue(0)
+            self.state.setText("<b>Read the text aloud…</b>")
         self.progress.show()
-        self.state.setText("<b>Stay silent…</b>" if kind == "room" else "<b>Read the passage…</b>")
         a.begin_record()
         QTimer.singleShot(100, self._tick)
 
     def _tick(self):
         if not self.recording:
             return
-        remaining = self.recording["until"] - time.monotonic()
+        now = time.monotonic()
+        remaining = self.recording["until"] - now
         if remaining > 0:
-            self.progress.setValue(int(100 * (1 - remaining / self.recording["length"])))
-            self.progress.setFormat(f"{remaining:.1f} s")
+            if self.recording["kind"] == "voice":
+                elapsed = now - self.recording["start"]
+                self.progress.setValue(int(min(100, 100 * elapsed / self.recording["nominal"])))
+                self.progress.setFormat(f"{elapsed:.0f} s of about {self.recording['nominal']} s")
+            else:
+                self.progress.setValue(int(100 * (1 - remaining / self.recording["length"])))
+                self.progress.setFormat(f"{remaining:.1f} s")
             QTimer.singleShot(100, self._tick)
+            return
+        self._finish()
+
+    def _finish(self):
+        if not self.recording:
+            return
+        if self.recording["kind"] == "voice" and time.monotonic() - self.recording["start"] < MIN_VOICE_S:
+            self._cancel(f"Too short: read for at least {MIN_VOICE_S:.0f} s.")
             return
         kind = self.recording["kind"]
         a = self.s.analyser
@@ -208,7 +315,9 @@ class MeasurePage(QWidget):
         self.recording = None
         self.progress.hide()
         self.room_button.setText("Record room tone")
-        self.voice_button.setText("Record voice")
+        self.voice_button.setText("Start reading")
+        self.voice_cancel.hide()
+        self.passage.setEnabled(True)
         self.room_button.setEnabled(True)
         self.voice_button.setEnabled(True)
 
@@ -218,7 +327,7 @@ class MeasurePage(QWidget):
         metrics = m.get("metrics") or {}
         kind = m["kind"]
         self.result_box.show()
-        self.result_box.setTitle("Room tone" if kind == "room" else "Voice sample")
+        self.result_box.setTitle("Room tone" if kind == "room" else "Mic test result")
         self.header.setText(
             f"<b>{esc(m.get('device_label') or m['device'])}</b> · gain {fmt_gain(m.get('gain_db'))}"
             + (f" (index {m['gain_index']})" if m.get("gain_index") is not None else "")
@@ -240,16 +349,25 @@ class MeasurePage(QWidget):
         self.bands.set_bands(metrics.get("bands"), reference)
         self.notes.setText(m.get("notes") or "")
 
-        suggestion = None
-        if kind == "voice" and self.s.device and m["device"] == self.s.device.name:
-            suggestion = analysis.suggest_index(self.s.curve, self.s.gain.index if self.s.gain else 0,
-                                                metrics.get("speech_peak_p95_dbfs")) if self.s.gain else None
-        self._suggestion = suggestion
-        if suggestion is not None and suggestion != self.s.gain.index:
-            self.apply_button.setText(f"Apply suggested gain ({fmt_gain(self.s.curve.db(suggestion))})")
-            self.apply_button.show()
-        else:
-            self.apply_button.hide()
+        self._suggestion = None
+        peak = metrics.get("speech_peak_p95_dbfs")
+        if kind == "voice" and peak is not None and self.s.device and m["device"] == self.s.device.name:
+            # Relative to the gain the sample was taken at, not whatever is set now.
+            if self.s.gain is not None and self.s.curve is not None and m.get("gain_index") is not None:
+                index = analysis.suggest_index(self.s.curve, m["gain_index"], peak)
+                if index is not None and index != self.s.gain.index:
+                    self._suggestion = ("index", index)
+                    change = self.s.curve.db(index) - self.s.curve.db(self.s.gain.index)
+                    self.apply_button.setText(f"Apply recommended gain: {fmt_gain(self.s.curve.db(index))} "
+                                              f"({change:+.1f} dB) and remember it")
+            elif self.s.soft_only and self.s.device.pw_percent:
+                # PipeWire software volume is cubic: dB = 60·log10(v).
+                wanted = CALIB_TARGET_PEAK_DB - peak
+                pct = max(1, min(150, int(round(self.s.device.pw_percent * 10 ** (wanted / 60.0)))))
+                if abs(wanted) >= 1.5 and pct != self.s.device.pw_percent:
+                    self._suggestion = ("soft", pct)
+                    self.apply_button.setText(f"Apply recommended level: {pct}% ({wanted:+.1f} dB)")
+        self.apply_button.setVisible(self._suggestion is not None)
         self.profile_button.setText("Save as room profile…" if kind == "room" else "Save as voice profile…")
         if m.get("ai"):
             self.ai_view.setHtml(ai_html(m["ai"]))
@@ -281,9 +399,19 @@ class MeasurePage(QWidget):
             self.state.setText(f"{kind.capitalize()} profile “{esc(name)}” saved.")
 
     def _apply_suggestion(self):
-        if self._suggestion is not None and self.s.set_index(self._suggestion):
+        if self._suggestion is None:
+            return
+        how, value = self._suggestion
+        if how == "index":
+            ok = self.s.set_index(value)
+            if ok:
+                self.s.remember_current()
+        else:
+            ok = self.s.set_soft(value)
+        if ok:
             self.apply_button.hide()
-            self.state.setText("Gain applied. Record another voice sample to confirm.")
+            self._update_mic_summary()
+            self.state.setText("Applied and remembered for this microphone. Run the test again to confirm.")
 
     def _ask_ai(self):
         if self.current:

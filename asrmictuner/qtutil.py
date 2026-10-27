@@ -124,6 +124,8 @@ def metric_rows(m):
             ("Presence vs body", _num(m.get("presence_vs_body_db"), " dB")),
             ("Sibilance vs body", _num(m.get("sibilance_vs_body_db"), " dB")),
             ("Plosive pops", str(m.get("plosive_pops", "—"))),
+            ("Dropouts", f"{m['dropouts']} ({_num(m.get('dropout_s'), ' s')})" if "dropouts" in m else "—"),
+            ("Level spread / drift", f"{_num(m.get('level_spread_db'), ' dB')} / {_num(m.get('level_drift_db'), ' dB')}"),
         ]
     elif kind == "calibration":
         rows += [

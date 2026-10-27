@@ -113,6 +113,8 @@ def main(argv=None):
                         help="reapply saved gain settings and exit (used by the login unit)")
     parser.add_argument("--delay", type=float, default=0.0,
                         help="seconds to wait before --restore, to let wireplumber settle")
+    parser.add_argument("--asr-mic", action="store_true",
+                        help="run the ASR Mic loopback while EasyEffects is up (used by its user unit)")
     args = parser.parse_args(argv)
 
     from .migrate import migrate
@@ -142,6 +144,9 @@ def main(argv=None):
     if args.restore:
         from .core import restore_saved
         return restore_saved(args.delay)
+    if args.asr_mic:
+        from .asrmic import serve
+        return serve()
 
     try:
         from .app import run

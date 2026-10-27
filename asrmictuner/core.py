@@ -27,6 +27,9 @@ UNIT_FILE = (
     / UNIT_NAME
 )
 
+# The "ASR Mic" virtual source (asrmic.py): a loopback from EasyEffects' output.
+ASR_MIC_NODE = "asr-mic-tuner.asr-mic"
+
 # Audio analysis ------------------------------------------------------------
 FULL_SCALE = 32768.0
 # A small margin below full scale: the s32->s16 conversion on the way out of
@@ -592,7 +595,8 @@ def recording_clients(device_name):
             if source.startswith("alsa_input."):
                 continue                    # a different microphone
             if source not in upstream:
-                upstream[source] = resolve_hardware_for(source)
+                # ASR Mic is fed by a loopback, which pw-link cannot see through.
+                upstream[source] = resolve_hardware_for("easyeffects_source" if source == ASR_MIC_NODE else source)
             if upstream[source] not in (None, device_name):
                 continue
         names.append(props.get("application.name") or props.get("node.name") or "unknown")

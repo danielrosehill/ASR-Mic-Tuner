@@ -335,3 +335,31 @@ something on screen needs it.
   owns the processing and the nodes. Acceptance check §8.5 still applies with
   EasyEffects not running.
 
+## 12. v1.0 additions (2026-10-27)
+
+- **Scope statement**: input tuning for ASR only (`CLAUDE.md`). Every
+  recommendation is tied to a device.
+- **Mic test** (Measure tab): a passage library (`passages.py`) of 30 s,
+  1, 2 and 3 min texts, written to exercise plosives, sibilants, soft
+  endings, numbers and names. Recording runs up to 1.5× the nominal length and
+  stops on *Done reading*. New voice metrics: `dropouts`/`dropout_s` (runs of
+  ≥ 90 ms below −90 dBFS between speech; a live mic never reaches that, so a
+  gate, VAD or underrun is muting audio), `level_spread_db` (p90−p10 of speech
+  RMS per 5 s window) and `level_drift_db` (last third against first). Findings
+  and readiness deductions in `analysis.py`; thresholds `DROPOUT_*`,
+  `LEVEL_*`. *Apply recommended gain* is computed from the gain the sample was
+  taken at. It sets the gain **and remembers it** for the device, or sets
+  software volume on devices with no analog control. The "This microphone" panel
+  shows that device's last test, remembered gain and bound EasyEffects preset.
+- **ASR Effects** gets *Quick setup* (template → preset `ASR <template>` →
+  bind to the current mic and port → start EasyEffects if needed → load), a
+  collapsed *Customise* editor, a "None" pass-through template, low-CPU RNNoise
+  twins of the DeepFilterNet chains, and a **VAD** library entry (RNNoise with
+  `enable-vad`). The VAD carries a caution wherever it is on: two VADs in series
+  (chain and transcription app) clip words.
+- **ASR Mic** (`asrmic.py`, `docs/asr-mic.md`): an opt-in user unit that runs
+  a supervised `pw-loopback` from `easyeffects_source` into a virtual source
+  "ASR Mic" (`asr-mic-tuner.asr-mic`). The raw mic stays default. Relative to §3,
+  this is the only node ASR Mic Tuner creates. It carries no processing of its own,
+  exists only while the user has turned it on, and is removed with its unit.
+

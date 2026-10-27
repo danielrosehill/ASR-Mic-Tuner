@@ -42,7 +42,8 @@ DEFAULT_SETTINGS = {
     "location": "",
     "locations": [],
     "room_seconds": 15,
-    "voice_seconds": 20,
+    "voice_seconds": 20,                # --measure voice default
+    "voice_passage": "60-email",        # mic test text, passages.py
     "calibration_mode": "standard",
     "active_room_profile": {},          # device name -> profile id
     "quiet_alert": True,                # notify when dictation runs too quiet (watch.py)

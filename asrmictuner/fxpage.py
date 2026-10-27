@@ -6,6 +6,8 @@ EasyEffects does the processing. Calls to its command line go through
 run_async because each one spawns a process (a Flatpak sandbox, ~1 s).
 """
 
+import time
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
@@ -13,8 +15,8 @@ from PyQt6.QtWidgets import (
     QSpinBox, QVBoxLayout, QWidget,
 )
 
-from . import effects
-from .effects import EFFECTS, TEMPLATES
+from . import asrmic, effects
+from .effects import EFFECTS, LIBRARY, TEMPLATES, VAD_CAUTION
 from .pages import _item, _table
 from .qtutil import esc, run_async, wrap_label
 
@@ -32,9 +34,44 @@ class EffectsPage(QWidget):
 
         root = QVBoxLayout(self)
         root.addWidget(wrap_label(
-            "<small>Input-side clean-up for dictation, run by <b>EasyEffects</b>. This tab writes "
-            "EasyEffects presets and per-microphone bindings; ASR Mic Tuner itself processes no audio. "
-            "Set the analog gain first (Monitor tab): no effect here can repair a clipped or buried signal.</small>"))
+            "<small>Input-side clean-up for dictation, run by <b>EasyEffects</b>. Set the analog gain first "
+            "(Monitor or Measure tab): no effect can repair a clipped or buried signal.</small>"))
+
+        # -- quick setup: the one-click path --
+        quick = QGroupBox("Quick setup")
+        ql = QVBoxLayout(quick)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Chain"))
+        self.quick_template = QComboBox()
+        for name, blurb, _steps in TEMPLATES:
+            self.quick_template.addItem(name)
+            self.quick_template.setItemData(self.quick_template.count() - 1, blurb, Qt.ItemDataRole.ToolTipRole)
+        row.addWidget(self.quick_template, 1)
+        self.quick_button = QPushButton("Set up")
+        self.quick_button.setToolTip("Save the chain as a preset, bind it to this microphone, and load it")
+        self.quick_button.clicked.connect(self._quick_setup)
+        row.addWidget(self.quick_button)
+        ql.addLayout(row)
+        self.quick_blurb = wrap_label()
+        self.quick_template.currentIndexChanged.connect(self._quick_blurb)
+        ql.addWidget(self.quick_blurb)
+        root.addWidget(quick)
+
+        # -- ASR Mic --
+        micbox = QGroupBox("ASR Mic")
+        al = QVBoxLayout(micbox)
+        al.addWidget(wrap_label(
+            "<small>Publishes the processed audio as its own input, <b>ASR Mic</b>. Your raw microphone "
+            "stays the default for everything else; point only your dictation app at ASR Mic. "
+            "Runs while EasyEffects runs. See <code>docs/asr-mic.md</code>.</small>"))
+        arow = QHBoxLayout()
+        self.asr_mic = QCheckBox("Create ASR Mic")
+        self.asr_mic.toggled.connect(self._asr_mic_toggled)
+        arow.addWidget(self.asr_mic)
+        self.asr_mic_state = QLabel()
+        arow.addWidget(self.asr_mic_state, 1)
+        al.addLayout(arow)
+        root.addWidget(micbox)
 
         # -- EasyEffects status --
         statusbox = QGroupBox("EasyEffects")
@@ -59,9 +96,17 @@ class EffectsPage(QWidget):
         sl.addLayout(row)
         root.addWidget(statusbox)
 
-        # -- chain editor --
-        editbox = QGroupBox("Input chain")
-        el = QVBoxLayout(editbox)
+        # -- chain editor, folded away until asked for --
+        editbox = QGroupBox("Customise the chain")
+        editbox.setCheckable(True)
+        editbox.setChecked(False)
+        outer = QVBoxLayout(editbox)
+        self.editor = QWidget()
+        el = QVBoxLayout(self.editor)
+        el.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self.editor)
+        self.editor.setVisible(False)
+        editbox.toggled.connect(self.editor.setVisible)
         top = QHBoxLayout()
         top.addWidget(QLabel("Preset"))
         self.preset = QComboBox()
@@ -88,10 +133,10 @@ class EffectsPage(QWidget):
         lib = QVBoxLayout()
         lib.addWidget(QLabel("<b>Effects</b>"))
         self.library = QListWidget()
-        for kind, spec in EFFECTS.items():
-            item = QListWidgetItem(spec["name"])
-            item.setData(Qt.ItemDataRole.UserRole, kind)
-            item.setToolTip(spec["blurb"])
+        for i, (name, _kind, _start, blurb) in enumerate(LIBRARY):
+            item = QListWidgetItem(name)
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            item.setToolTip(blurb)
             self.library.addItem(item)
         self.library.itemDoubleClicked.connect(lambda _i: self._add())
         self.library.currentItemChanged.connect(self._show_blurb)
@@ -149,7 +194,8 @@ class EffectsPage(QWidget):
             "<small>EasyEffects loads the bound preset whenever that microphone and port become the input. "
             "Bindings are per port: the internal mic and a headset jack on the same card are separate.</small>"))
         self.bind_table = _table(["Microphone", "Port", "Preset"])
-        self.bind_table.setMinimumHeight(110)
+        self.bind_table.setMinimumHeight(90)
+        self.bind_table.setMaximumHeight(160)
         bl.addWidget(self.bind_table)
         brow = QHBoxLayout()
         self.bind_label = QLabel()
@@ -167,6 +213,8 @@ class EffectsPage(QWidget):
         root.addStretch(1)
 
         self.s.device_changed.connect(self._update_bind_label)
+        self.s.device_changed.connect(self._quick_blurb)
+        self._quick_blurb()
         self._shown_once = False
 
     # -- lifecycle --
@@ -179,8 +227,9 @@ class EffectsPage(QWidget):
     def refresh(self):
         self.ee = effects.EasyEffects()
         installed = self.ee.installed
-        for w in (self.start_btn, self.open_btn, self.bypass):
+        for w in (self.start_btn, self.open_btn, self.bypass, self.quick_button, self.asr_mic):
             w.setEnabled(installed)
+        self._asr_mic_status()
         if not installed:
             self.state.setText("<span style='color:#d43333'>EasyEffects is not installed.</span> "
                                "Install it from Flathub (<code>com.github.wwmm.easyeffects</code>) or the archive.")
@@ -224,6 +273,62 @@ class EffectsPage(QWidget):
 
         run_async(probe, show, lambda msg: self.state.setText(f"<span style='color:#d43333'>{esc(msg)}</span>"))
 
+    # -- quick setup --
+    def _quick_blurb(self, i=None):
+        name, blurb, steps = TEMPLATES[self.quick_template.currentIndex()]
+        chain = effects.from_template(name)
+        flow = " → ".join(esc(effects.describe(e)) for e in chain) or "no processing"
+        d = self.s.device
+        target = esc(d.description) + (f" · {esc(d.port)}" if d and d.port else "") if d else "no microphone"
+        self.quick_blurb.setText(f"<small>{esc(blurb)}<br><b>Mic</b> → {flow} → <b>apps</b>. "
+                                 f"<b>Set up</b> saves it as “ASR {esc(name)}”, binds it to {target}, "
+                                 "and loads it.</small>")
+
+    def _quick_setup(self):
+        d = self.s.device
+        if d is None:
+            self.s.status.emit("Pick a microphone in the header first.")
+            return
+        name = self.quick_template.currentText()
+        preset = f"ASR {name}"
+        self.ee.write_preset(preset, effects.from_template(name))
+        self.ee.bind(d, preset)
+        ee = self.ee
+
+        def work():
+            if not ee.running():
+                ee.start()
+                for _ in range(20):            # the Flatpak takes a few seconds to come up
+                    time.sleep(0.5)
+                    if ee.running():
+                        time.sleep(2)
+                        break
+            return ee.load(preset)
+
+        def done(result):
+            ok, out = result
+            self.s.status.emit(f"“{preset}” saved, bound to {d.description} and loaded." if ok
+                               else f"Saved and bound “{preset}”, but EasyEffects did not load it: {out}")
+            self.refresh()
+
+        self.s.status.emit(f"Setting up “{preset}”…")
+        run_async(work, done, lambda msg: self.s.status.emit(f"EasyEffects: {msg}"))
+
+    # -- ASR Mic --
+    def _asr_mic_status(self):
+        on = asrmic.enabled()
+        self.asr_mic.blockSignals(True)
+        self.asr_mic.setChecked(on)
+        self.asr_mic.blockSignals(False)
+        state = asrmic.state()
+        colour = {"active": "#2ea44f", "off": "#888"}.get(state, "#b07d00")
+        self.asr_mic_state.setText(f"<small><span style='color:{colour}'>{esc(state.capitalize())}</span></small>")
+
+    def _asr_mic_toggled(self, on):
+        ok, message = asrmic.set_enabled(on)
+        self.s.status.emit(message)
+        QTimer.singleShot(1500, self._asr_mic_status)
+
     def _start(self):
         self.ee.start()
         self.s.status.emit("Starting EasyEffects in the background…")
@@ -263,8 +368,8 @@ class EffectsPage(QWidget):
         item = self.library.currentItem()
         if item is None:
             return
-        kind = item.data(Qt.ItemDataRole.UserRole)
-        entry = effects.new_entry(kind, self.chain)
+        _name, kind, start, _blurb = LIBRARY[item.data(Qt.ItemDataRole.UserRole)]
+        entry = effects.new_entry(kind, self.chain, start)
         # A limiter belongs last; everything else goes before it.
         at = len(self.chain)
         if kind != "limiter":
@@ -307,12 +412,15 @@ class EffectsPage(QWidget):
                                  "pass-through preset. Pick a template or add effects.</small>")
             return
         steps = " → ".join(esc(effects.describe(e)) for e in self.chain)
-        self.summary.setText(f"<small><b>Mic</b> → {steps} → <b>apps</b></small>")
+        text = f"<small><b>Mic</b> → {steps} → <b>apps</b></small>"
+        if any(effects.has_vad(e) for e in self.chain):
+            text += f"<br><small style='color:#d43333'><b>VAD in this chain.</b> {esc(VAD_CAUTION)}</small>"
+        self.summary.setText(text)
 
     def _show_blurb(self, item, _prev=None):
         if item is not None and self.chain_list.currentRow() < 0:
-            spec = EFFECTS[item.data(Qt.ItemDataRole.UserRole)]
-            self.blurb.setText(f"<small>{esc(spec['blurb'])}</small>")
+            blurb = LIBRARY[item.data(Qt.ItemDataRole.UserRole)][3]
+            self.blurb.setText(f"<small>{esc(blurb)}</small>")
 
     def _select(self, row):
         while self.form.rowCount():
@@ -328,6 +436,8 @@ class EffectsPage(QWidget):
             return
         self.blurb.setText(f"<small>{esc(spec['blurb'])}</small>")
         settings = entry["settings"]
+        if effects.has_vad(entry):
+            self.form.addRow(wrap_label(f"<small style='color:#d43333'><b>VAD is on.</b> {esc(VAD_CAUTION)}</small>"))
         bypass = QCheckBox("Bypass this effect")
         bypass.setChecked(bool(settings.get("bypass")))
         bypass.toggled.connect(lambda on: self._set(row, "bypass", on))
@@ -358,7 +468,10 @@ class EffectsPage(QWidget):
             self.form.addRow(label, w)
 
     def _set(self, row, key, value):
+        vad_before = effects.has_vad(self.chain[row])
         effects.set_value(self.chain[row]["settings"], key, value)
+        if effects.has_vad(self.chain[row]) != vad_before:
+            QTimer.singleShot(0, lambda: self._select(row))   # show or drop the caution
         item = self.chain_list.item(row)
         if item is not None:
             entry = self.chain[row]

@@ -158,6 +158,27 @@ EFFECTS = {
     },
 }
 
+VAD_CAUTION = (
+    "Use with caution. A VAD mutes everything it judges not to be speech. Most transcription apps "
+    "(Whisper-based tools, cloud ASR, dictation apps) already run their own VAD, and two in series "
+    "clip word starts and drop quiet words. Add one here only if your app has none, then run a mic "
+    "test: dropouts in the result mean it is cutting speech.")
+
+# What the Effects list offers: (label, kind, start overrides, blurb). The
+# VAD entry is RNNoise with its voice-activity gate on; EasyEffects has no
+# standalone VAD plugin.
+LIBRARY = [(spec["name"], kind, {}, spec["blurb"]) for kind, spec in EFFECTS.items()]
+LIBRARY.insert(next(i for i, item in enumerate(LIBRARY) if item[1] == "rnnoise") + 1,
+               ("⚠ Voice activity gate (VAD)", "rnnoise", {"enable-vad": True, "vad-thres": 50.0},
+                "RNNoise with its voice-activity gate on. " + VAD_CAUTION))
+
+
+def has_vad(entry):
+    s = entry["settings"]
+    return bool((entry["kind"] == "rnnoise" and s.get("enable-vad"))
+                or (entry["kind"] == "speex" and get_value(s, "vad.enable")))
+
+
 # DeepFilterNet is the stronger denoiser but costs real CPU: on the reference
 # laptop (Ryzen, 2026-10-27) it underran when the chain started. Each chain
 # that uses it has a "low CPU" twin on RNNoise.
@@ -190,6 +211,10 @@ def kind_of(instance_id):
 
 def describe(entry):
     """Short label for a chain entry: "High-pass filter 80 Hz"."""
+    return _describe(entry) + ("  + VAD ⚠" if has_vad(entry) else "")
+
+
+def _describe(entry):
     kind = entry["kind"]
     spec = EFFECTS.get(kind)
     if not spec:

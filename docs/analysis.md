@@ -54,6 +54,9 @@ Speech activity: blocks ≥ max(noise + 12 dB, 30th percentile, −55 dBFS).
 | `low_vs_body_db` | 20–80 Hz vs 150–1000 Hz; > −6 dB warns of rumble or proximity effect. 80 Hz sits below almost any speaker's F0, so voice itself doesn't trip it (an earlier 150 Hz edge flagged a 140 Hz synthetic voice) |
 | `presence_vs_body_db` (2–5 kHz), `sibilance_vs_body_db` (5–10 kHz; > −3 dB warns) | tonal balance |
 | `plosive_pops` | active blocks whose < 80 Hz energy is > median + 15 dB; ≥ 5 warns |
+| `dropouts`, `dropout_s` | runs of ≥ 3 blocks (~90 ms) below −90 dBFS between the first and last speech block. A live mic always carries noise, so this means a gate, VAD or underrun upstream muted the audio; any is a fail |
+| `level_spread_db` | p90 − p10 of speech RMS across 5 s windows (needs ≥ 4 windows, so ≥ 20 s); > 6 dB warns |
+| `level_drift_db` | mean speech RMS of the last third of windows minus the first third; beyond ±4 dB warns |
 | `speech_ratio` | share of active blocks; < 0.3 warns that the sample is unreliable |
 
 ### ASR readiness score
@@ -71,6 +74,8 @@ Start at 100 and subtract named deductions; anything under 1 point is ignored.
 | bandwidth < 7 kHz | 15 |
 | noise reference above −50 | min(20, 2 × dB over) |
 | ≥ 5 plosive pops | 5 |
+| dropouts | 8 + 2 per dropout, max 20 |
+| level spread > 6 dB | 5 |
 
 Grades: ≥ 85 excellent, ≥ 70 good, ≥ 50 fair, else poor.
 
@@ -84,3 +89,9 @@ Grades: ≥ 85 excellent, ≥ 70 good, ≥ 50 fair, else poor.
 
 Not yet validated against real voice recordings. The thresholds are design
 targets for ASR, not tuned on data.
+
+Dropouts and level spread/drift (added 2026-10-27) were checked on a synthetic
+40 s harmonic signal with a 6 dB fade across it and three 140 ms runs of digital
+silence injected into pauses. The result was `dropouts` 3, `dropout_s` 0.36 and
+`level_drift_db` −5.7, and the clean copy gave `dropouts` 0.
+

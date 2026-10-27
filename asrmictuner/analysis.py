@@ -38,6 +38,11 @@ HUM_WARN_DB = 15.0              # hum line this far above its neighbours
 DC_WARN = 0.01                  # 1 % of full scale
 IMBALANCE_WARN_DB = 6.0
 BANDWIDTH_OK_HZ = 7000.0
+DROPOUT_DB = -90.0              # a live mic never gets this quiet: something upstream muted it
+DROPOUT_MIN_BLOCKS = 3          # ~90 ms of digital silence counts as one dropout
+LEVEL_WINDOW_S = 5.0            # speech level is compared across windows this long
+LEVEL_SPREAD_WARN_DB = 6.0
+LEVEL_DRIFT_WARN_DB = 4.0
 
 
 def _db(power_or_mag, power=True, floor=FLOOR_DB):
@@ -465,6 +470,37 @@ def analyse_voice(audio, rate, room=None):
             med = float(np.median(lp))
             plosives = int(np.sum(np.array(lp) > med + 15.0))
 
+    # Dropouts: runs of digital silence between the first and last speech
+    # block. A raw mic always carries some noise, so these mean a gate, VAD
+    # or buffer underrun upstream is muting audio.
+    dropouts, dropout_s = 0, 0.0
+    if active.any():
+        first, last = np.where(active)[0][[0, -1]]
+        run = 0
+        for level in blocks[first:last + 1]:
+            if level < DROPOUT_DB:
+                run += 1
+                continue
+            if run >= DROPOUT_MIN_BLOCKS:
+                dropouts += 1
+                dropout_s += run * BLOCK_S
+            run = 0
+
+    # Level consistency: speech RMS per window. Spread is how much it wanders,
+    # drift is the last third against the first (moving away, leaning back,
+    # an AGC upstream pumping).
+    per = max(1, int(LEVEL_WINDOW_S / BLOCK_S))
+    window_levels = []
+    for i in range(0, len(blocks), per):
+        sel = blocks[i:i + per][active[i:i + per]]
+        if sel.size >= per // 4:
+            window_levels.append(float(_db(np.mean(10 ** (sel / 10.0)))))
+    spread = drift = None
+    if len(window_levels) >= 4:
+        spread = float(np.percentile(window_levels, 90) - np.percentile(window_levels, 10))
+        third = max(1, len(window_levels) // 3)
+        drift = float(np.mean(window_levels[-third:]) - np.mean(window_levels[:third]))
+
     result = {
         "kind": "voice",
         "duration_s": _f(len(x) / rate, 1),
@@ -491,6 +527,10 @@ def analyse_voice(audio, rate, room=None):
         "presence_vs_body_db": _f(presence - body),
         "sibilance_vs_body_db": _f(sibilance - body),
         "plosive_pops": plosives,
+        "dropouts": dropouts,
+        "dropout_s": _f(dropout_s),
+        "level_spread_db": _f(spread),
+        "level_drift_db": _f(drift),
         "bands": third_octave_bands(freqs, power, rate),
     }
     result["findings"] = voice_findings(result)
@@ -542,6 +582,19 @@ def voice_findings(v):
     if imb is not None and imb >= IMBALANCE_WARN_DB:
         out.append(("warn", f"Channels differ by {imb:.1f} dB — one capsule is "
                     "obstructed or the array is asymmetric."))
+    if v.get("dropouts"):
+        out.append(("fail", f"{v['dropouts']} stretches of digital silence mid-speech "
+                    f"({v.get('dropout_s') or 0:.1f} s). A gate or VAD before this point is muting "
+                    "audio, or the stream is dropping out. If your transcription app has its own VAD, "
+                    "remove the one in the chain: two in series clip word starts."))
+    spread = v.get("level_spread_db")
+    if spread is not None and spread > LEVEL_SPREAD_WARN_DB:
+        out.append(("warn", f"Speech level wanders over {spread:.0f} dB between 5-second stretches. "
+                    "Keep a steady distance from the mic; an auto gain in the chain also evens this out."))
+    drift = v.get("level_drift_db")
+    if drift is not None and abs(drift) > LEVEL_DRIFT_WARN_DB:
+        out.append(("warn", f"Level {'fell' if drift < 0 else 'rose'} {abs(drift):.0f} dB from the start "
+                    "of the reading to the end: posture or distance changed as you went."))
     if (v.get("speech_ratio") or 0) < 0.3:
         out.append(("warn", "Little speech detected in the sample — measurements "
                     "may be unreliable. Speak continuously while recording."))
@@ -585,6 +638,10 @@ def readiness(v):
         hit(min(20, (noise - NOISE_OK_DB) * 2), "high noise floor")
     if v.get("plosive_pops", 0) >= 5:
         hit(5, "plosives")
+    if v.get("dropouts"):
+        hit(min(20, 8 + 2 * v["dropouts"]), "dropouts (gate or VAD muting speech)")
+    if (v.get("level_spread_db") or 0) > LEVEL_SPREAD_WARN_DB:
+        hit(5, "unsteady level")
     score = max(0, min(100, round(score)))
     grade = "excellent" if score >= 85 else "good" if score >= 70 else "fair" if score >= 50 else "poor"
     return {"score": score, "grade": grade, "deductions": reasons}

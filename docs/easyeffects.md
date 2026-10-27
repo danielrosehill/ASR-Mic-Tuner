@@ -56,6 +56,10 @@ harmless noise.
 - Key names, ranges and defaults per plugin are in
   `src/<plugin>_preset.cpp` and `src/contents/kcfg/easyeffects_db_<plugin>.kcfg`.
   The `EFFECTS` table in `effects.py` copies the ones the tab exposes.
+- The library's "⚠ Voice activity gate (VAD)" entry is RNNoise with
+  `enable-vad: true` (EasyEffects has no standalone VAD plugin). Speex's
+  `vad.enable` counts as a VAD too. Either one shows the caution in the tab
+  (`effects.VAD_CAUTION`), and no template turns a VAD on.
 - Plugins the tab does not know (an equaliser, say) are kept, shown as
   "edit in EasyEffects", and written back unchanged.
 
