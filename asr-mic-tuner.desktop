@@ -1,16 +1,16 @@
 [Desktop Entry]
 Type=Application
-Name=Mic Monitor
+Name=ASR Mic Tuner
 GenericName=Microphone Monitor
 Comment=Microphone gain, level, noise and voice analysis for dictation
-Exec=mic-monitor
+Exec=asr-mic-tuner
 Icon=audio-input-microphone
 Categories=AudioVideo;Audio;Settings;Qt;KDE;
 Keywords=microphone;mic;gain;level;meter;clipping;dictation;noise;asr;speech;monitor;
-StartupWMClass=mic-monitor
+StartupWMClass=asr-mic-tuner
 Terminal=false
 Actions=Tray;
 
 [Desktop Action Tray]
 Name=Start in tray
-Exec=mic-monitor --tray
+Exec=asr-mic-tuner --tray

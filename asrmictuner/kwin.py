@@ -11,8 +11,8 @@ reload over D-Bus.
 import shutil
 import subprocess
 
-RULE_GROUP = "mic-monitor-tray-popup"
-POPUP_TITLE = "Mic Monitor — tray"
+RULE_GROUP = "asr-mic-tuner-tray-popup"
+POPUP_TITLE = "ASR Mic Tuner — tray"
 MARGIN = 8
 
 
@@ -63,8 +63,8 @@ def install_rule(width=400, height=360):
     x = geo.x() + geo.width() - width - MARGIN
     y = geo.y() + geo.height() - height - MARGIN
     g = RULE_GROUP
-    _write(g, "Description", "Mic Monitor tray pop-up")
-    _write(g, "wmclass", "mic-monitor")
+    _write(g, "Description", "ASR Mic Tuner tray pop-up")
+    _write(g, "wmclass", "asr-mic-tuner")
     _write(g, "wmclassmatch", 1)
     _write(g, "wmclasscomplete", "false", "bool")
     _write(g, "title", POPUP_TITLE)

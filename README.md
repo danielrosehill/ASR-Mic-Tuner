@@ -1,8 +1,8 @@
-# Mic Monitor
+# ASR Mic Tuner
 
 > *See what your microphone is really doing — tuned for dictation and speech recognition.*
 
-**Write-up:** [The Linux mic slider lies: Mic Monitor shows the real gain](https://blog.danielrosehill.com/posts/linux-microphone-gain-dictation-mic-monitor-kaq5pj)
+**Write-up:** [The Linux mic slider lies: Mic Monitor shows the real gain](https://blog.danielrosehill.com/posts/linux-microphone-gain-dictation-mic-monitor-kaq5pj) (written before the rename to ASR Mic Tuner)
 
 A KDE Plasma (Qt 6) microphone monitor that lives in the system tray. It shows
 the **true analog gain** of a capture device in dB, its **signal level** in
@@ -53,11 +53,11 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 
 ## What it does not do
 
-Mic Monitor inserts **no** audio processing, no filter, no virtual source and no
+ASR Mic Tuner inserts **no** audio processing, no filter, no virtual source and no
 AGC, and installs nothing into `/etc`. It observes, sets gain, and records only
 when you ask it to. The sibling project [`dictamic`](https://github.com/danielrosehill/dictamic)
 took the processing route. Measurement showed raw audio at *correct* gain had a
-**9 dB lower noise floor** than that whole chain, so Mic Monitor makes correct gain
+**9 dB lower noise floor** than that whole chain, so ASR Mic Tuner makes correct gain
 easy instead.
 
 ## Install
@@ -65,57 +65,58 @@ easy instead.
 From the signed APT repository at `apps.danielrosehill.com/apt` (updates arrive with `sudo apt upgrade`):
 
 ```bash
-curl -fsSL https://apps.danielrosehill.com/apt/setup.sh | sudo sh -s -- mic-monitor
+curl -fsSL https://apps.danielrosehill.com/apt/setup.sh | sudo sh -s -- asr-mic-tuner
 ```
 
 If the repository is already set up on the machine:
 
 ```bash
-sudo apt update && sudo apt install mic-monitor
+sudo apt update && sudo apt install asr-mic-tuner
 ```
 
-Or install the `.deb` from the [latest release](https://github.com/danielrosehill/Mic-Monitor/releases/latest):
+Or install the `.deb` from the [latest release](https://github.com/danielrosehill/ASR-Mic-Tuner/releases/latest):
 
 ```bash
-sudo apt install ./mic-monitor_*_all.deb
+sudo apt install ./asr-mic-tuner_*_all.deb
 ```
 
-Then run `mic-monitor`, or `mic-monitor --tray` to start in the tray only (what "Start in the tray at login" runs).
+Then run `asr-mic-tuner`, or `asr-mic-tuner --tray` to start in the tray only (what "Start in the tray at login" runs).
 Tested on Ubuntu 26.04; it needs only archive packages (PyQt6, numpy), so 24.04 and later should work. It's built for KDE Plasma and works on any desktop with a StatusNotifierItem tray.
 
 Depends: `python3-pyqt6 python3-numpy pulseaudio-utils alsa-utils`.
 Recommends: `sox` (FLAC samples and noise profiles), `ffmpeg` (audio for AI),
 `pipewire-bin` (playback), `libkf6config-bin` and `qdbus-qt6` (KWin pop-up placement).
 
-**Formerly `micscope`** (v0.1–0.2). The `mic-monitor` package replaces it, and on first run it moves
-`~/.config/micscope` and `~/.local/share/micscope` to the new names and renames the KWin rule,
-autostart entry and login unit.
+**Formerly Mic Monitor (`mic-monitor`, v0.3) and `micscope` (v0.1–0.2).** The `asr-mic-tuner`
+package replaces both, and on first run it moves `~/.config/<old name>` and
+`~/.local/share/<old name>` to the new names and renames the KWin rule, autostart entry and login unit.
+The GitHub repository was `danielrosehill/Mic-Monitor`; GitHub redirects the old URL.
 
 ## Command line (scripts and agents)
 
 ```bash
-mic-monitor --list [--json]                 # every source with real analog gain, presets, remembered gain
-mic-monitor --measure room --seconds 15 --location "living room"   # records, analyses, logs; prints JSON
-mic-monitor --measure voice --seconds 20
-mic-monitor --history [--json]              # the measurement log
-mic-monitor --restore [--delay 8]           # reapply remembered gain (used by the login unit)
+asr-mic-tuner --list [--json]                 # every source with real analog gain, presets, remembered gain
+asr-mic-tuner --measure room --seconds 15 --location "living room"   # records, analyses, logs; prints JSON
+asr-mic-tuner --measure voice --seconds 20
+asr-mic-tuner --history [--json]              # the measurement log
+asr-mic-tuner --restore [--delay 8]           # reapply remembered gain (used by the login unit)
 ```
 
 ## Files
 
 | Path | Contents |
 |---|---|
-| `~/.config/mic-monitor/devices.json` | remembered gain per device, named presets, probed-curve cache |
-| `~/.config/mic-monitor/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
-| `~/.local/share/mic-monitor/history.db` | SQLite: `measurements`, `profiles` |
-| `~/.local/share/mic-monitor/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
-| `~/.config/kwinrulesrc` group `mic-monitor-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |
+| `~/.config/asr-mic-tuner/devices.json` | remembered gain per device, named presets, probed-curve cache |
+| `~/.config/asr-mic-tuner/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
+| `~/.local/share/asr-mic-tuner/history.db` | SQLite: `measurements`, `profiles` |
+| `~/.local/share/asr-mic-tuner/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
+| `~/.config/kwinrulesrc` group `asr-mic-tuner-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |
 
 ## Build
 
 ```bash
-./build-deb.sh            # version from micmonitor/__init__.py → dist/mic-monitor_<v>_all.deb
-python3 -m micmonitor       # run from the source tree
+./build-deb.sh            # version from asrmictuner/__init__.py → dist/asr-mic-tuner_<v>_all.deb
+python3 -m asrmictuner       # run from the source tree
 ```
 
 ## Docs

@@ -1,6 +1,6 @@
 # Analysis: metrics, thresholds, score
 
-Source: `micmonitor/analysis.py`. Input is raw int16 audio, shape
+Source: `asrmictuner/analysis.py`. Input is raw int16 audio, shape
 `(frames, channels)`, at the device's native rate (48 kHz on the reference
 laptop). Output is plain JSON, stored as `measurements.metrics` in
 `history.db` and sent as-is (with band tables compacted) to the AI review.

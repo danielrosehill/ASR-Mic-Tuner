@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.s = session
         self.ctl = app_controller
-        self.setWindowTitle("Mic Monitor")
+        self.setWindowTitle("ASR Mic Tuner")
         self.setWindowIcon(QIcon.fromTheme("audio-input-microphone"))
         self.resize(940, 780)
         self._filling = False
@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(scrolled(self.settings_page), QIcon.fromTheme("configure"), "Settings")
         root.addWidget(self.tabs, 1)
         self.setCentralWidget(central)
-        self.statusBar().showMessage(f"Mic Monitor {VERSION}")
+        self.statusBar().showMessage(f"ASR Mic Tuner {VERSION}")
 
         self.s.status.connect(lambda msg: self.statusBar().showMessage(msg, 8000))
         self.s.device_changed.connect(self._sync_combo)

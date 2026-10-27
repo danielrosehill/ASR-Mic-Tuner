@@ -117,7 +117,7 @@ def main(argv=None):
 
     from .migrate import migrate
     for note in migrate():
-        print(f"{APP}: migrated from micscope: {note}", file=sys.stderr)
+        print(f"{APP}: migrated {note}", file=sys.stderr)
 
     if args.list:
         if args.json:

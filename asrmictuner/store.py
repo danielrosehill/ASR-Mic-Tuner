@@ -3,10 +3,10 @@ profiles, recorded samples, and app settings.
 
 Layout (XDG):
 
-    ~/.config/mic-monitor/devices.json     remembered gain, presets, curve cache (core.py)
-    ~/.config/mic-monitor/settings.json    app settings, incl. the OpenRouter key
-    ~/.local/share/mic-monitor/history.db  SQLite: measurements, profiles
-    ~/.local/share/mic-monitor/samples/    recorded room tone and voice, FLAC (or WAV)
+    ~/.config/asr-mic-tuner/devices.json     remembered gain, presets, curve cache (core.py)
+    ~/.config/asr-mic-tuner/settings.json    app settings, incl. the OpenRouter key
+    ~/.local/share/asr-mic-tuner/history.db  SQLite: measurements, profiles
+    ~/.local/share/asr-mic-tuner/samples/    recorded room tone and voice, FLAC (or WAV)
                                         plus a sox noise profile per room sample
 
 Samples are kept so a room's noise can later be used for cleanup:
