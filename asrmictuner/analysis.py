@@ -647,12 +647,12 @@ def readiness(v):
     return {"score": score, "grade": grade, "deductions": reasons}
 
 
-def suggest_index(curve, current_index, speech_peak):
-    """Gain index that would put speech peaks at the target, or None."""
+def suggest_index(curve, current_index, speech_peak, target=CALIB_TARGET_PEAK_DB):
+    """Gain index that would put speech peaks at `target`, or None."""
     if curve is None or speech_peak is None:
         return None
     here = curve.db(current_index)
-    return curve.index_for_db(here + CALIB_TARGET_PEAK_DB - speech_peak)
+    return curve.index_for_db(here + target - speech_peak)
 
 
 # ---------------------------------------------------------------------------

@@ -412,9 +412,16 @@ class ScoreBadge(QWidget):
         p.drawText(rect.adjusted(0, 26, 0, 0), Qt.AlignmentFlag.AlignCenter, self.grade)
 
 
+# Fader knob height (0 bottom .. 1 top) per state when there is no live level.
+TRAY_KNOB_POS = {"idle": 0.5, "low": 0.2, "safe": 0.5, "caution": 0.7, "danger": 0.88,
+                 "clip": 0.88, "drift": 0.5}
+
+
 def tray_icon(state, level=None):
-    """Microphone glyph with a status dot. `state`: idle | low | safe |
-    caution | danger | clip | drift. `level`: optional 0..1 live bar."""
+    """Microphone glyph beside a mixer fader whose knob carries the status
+    colour. No round dot: a red dot reads as "recording" and collides with
+    other tray indicators. `state`: idle | low | safe | caution | danger |
+    clip | drift. `level`: optional 0..1, moves the knob live."""
     size = 64
     pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
@@ -423,26 +430,28 @@ def tray_icon(state, level=None):
     base = QIcon.fromTheme("audio-input-microphone-symbolic",
                            QIcon.fromTheme("audio-input-microphone"))
     if not base.isNull():
-        base.paint(p, 2, 2, 50, 50)
+        base.paint(p, -2, 8, 42, 48)
     else:
         p.setPen(QPen(QColor(220, 220, 220), 5))
-        p.drawRoundedRect(QRectF(18, 4, 18, 30), 9, 9)
-        p.drawArc(QRectF(10, 14, 34, 30), 180 * 16, 180 * 16)
-        p.drawLine(27, 44, 27, 54)
+        p.drawRoundedRect(QRectF(13, 10, 16, 26), 8, 8)
+        p.drawArc(QRectF(6, 20, 30, 26), 180 * 16, 180 * 16)
+        p.drawLine(21, 46, 21, 56)
     colour = {
         "low": C_LOW, "safe": C_TARGET, "caution": C_CAUTION, "danger": C_DANGER,
         "clip": C_DANGER, "drift": C_CAUTION,
-    }.get(state)
-    if level is not None:
-        h = max(2, int(52 * max(0.0, min(1.0, level))))
-        p.fillRect(QRectF(54, 58 - h, 8, h), level_colour(METER_MIN_DB * (1 - level)))
-    if colour is not None:
-        p.setPen(QPen(QColor(20, 20, 20), 2))
-        p.setBrush(colour)
-        p.drawEllipse(QRectF(36, 36, 26, 26))
-        if state in ("drift", "clip"):
-            p.setPen(QPen(QColor(255, 255, 255), 4))
-            p.drawLine(49, 41, 49, 52)
-            p.drawPoint(49, 57)
+    }.get(state, QColor(170, 170, 170))
+    top, bottom, x = 9.0, 55.0, 51.0
+    pos = TRAY_KNOB_POS.get(state, 0.5) if level is None else max(0.0, min(1.0, level))
+    knob_y = bottom - pos * (bottom - top)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(110, 110, 110))
+    p.drawRoundedRect(QRectF(x - 5, top, 10, bottom - top), 4, 4)
+    p.setBrush(colour)
+    p.drawRoundedRect(QRectF(x - 5, knob_y, 10, bottom - knob_y), 4, 4)
+    p.setPen(QPen(QColor(20, 20, 20), 3))
+    p.drawRoundedRect(QRectF(x - 12, knob_y - 9, 24, 18), 4, 4)
+    if state in ("drift", "clip"):
+        p.setPen(QPen(QColor(255, 255, 255), 4))
+        p.drawLine(QPointF(x - 6, knob_y), QPointF(x + 6, knob_y))
     p.end()
     return QIcon(pix)

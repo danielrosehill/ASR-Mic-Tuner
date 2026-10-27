@@ -183,7 +183,8 @@ a session of manual `parecord` and `sox` work:
 
 1. **"Stay quiet"**, 3 s → measure noise floor (RMS and peak).
 2. **"Speak normally, at your usual distance"**, 8 s → measure speech RMS and peak.
-3. Compute the gain-index delta that would place speech peaks at **−12 dBFS**.
+3. Compute the gain-index delta that would place speech peaks at **−12 dBFS**
+   (**−18 dBFS** with Conservative gain on, §15).
 4. Validate the result: require noise floor ≤ −50 dBFS **and** headroom ≥ 12 dB.
    If speech and noise are too close, the problem is the room or the mic, not
    the gain — say so rather than recommending a number.
@@ -426,3 +427,26 @@ and user unit), `fxpage.py` (the tab). Reference: `docs/effects.md`.
   node), and left nothing running after it stopped.
 - **Breaking change**: chains from the v1.x ASR Effects tab do not carry over.
 
+## 15. v2.1 additions (2026-10-27)
+
+- **Conservative gain** (setting `conservative_gain`, default false; Settings →
+  While you dictate, and a checkable tray menu item). Asked for because quiet
+  dictation tuned to −12 dBFS peaks leaves 12 dB of headroom, and a crying baby
+  or a shout in the room blows straight through it. When on,
+  `core.target_peak_db(settings)` returns `CONSERVATIVE_TARGET_PEAK_DB`
+  (= `TARGET_LO_DB`, −18 dBFS) instead of `CALIB_TARGET_PEAK_DB` (−12). Every
+  recommendation reads its target from there: Measure's *Apply recommended
+  gain* (`analysis.suggest_index(..., target)` and the software-volume branch),
+  calibration (`monitor.py`), the live verdict's "needs ±x dB" fix, auto gain
+  and the quiet-mic alert text (`watch.py`). Auto gain also caps raises at
+  `CONSERVATIVE_RAISE_STEP_DB` (1.5 dB) instead of 3; lowering and the
+  immediate step down on clipping are unchanged. The target band itself
+  (−18…−10) and the readiness score do not change, so −18 still reads "Good
+  level". Findings text already stored with older measurements still quotes −12.
+- **Tray icon redrawn** (`widgets.tray_icon`): the round status dot read as a
+  recording indicator and looked like another tray app's icon. It is now a
+  microphone beside a vertical fader; the knob carries the zone colour and sits
+  at a height per state (`TRAY_KNOB_POS`), or follows the live level when one
+  is passed. Idle is a grey knob, so the icon is never just a bare mic. Drift
+  and clip add a white bar across the knob in place of the old "!". Rendered
+  offscreen at 64 and 24 px and checked by eye before release.

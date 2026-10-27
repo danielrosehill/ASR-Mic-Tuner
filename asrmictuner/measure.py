@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import analysis, passages, store
-from .core import CALIB_TARGET_PEAK_DB, fmt_gain, fmt_level
+from .core import fmt_gain, fmt_level, target_peak_db
 from .qtutil import (
     ask_ai, ask_text, ai_html, esc, findings_html, metrics_html, run_async, wrap_label,
 )
@@ -351,7 +351,7 @@ class MeasurePage(QWidget):
         if kind == "voice" and peak is not None and self.s.device and m["device"] == self.s.device.name:
             # Relative to the gain the sample was taken at, not whatever is set now.
             if self.s.gain is not None and self.s.curve is not None and m.get("gain_index") is not None:
-                index = analysis.suggest_index(self.s.curve, m["gain_index"], peak)
+                index = analysis.suggest_index(self.s.curve, m["gain_index"], peak, target_peak_db(self.s.settings))
                 if index is not None and index != self.s.gain.index:
                     self._suggestion = ("index", index)
                     change = self.s.curve.db(index) - self.s.curve.db(self.s.gain.index)
@@ -359,7 +359,7 @@ class MeasurePage(QWidget):
                                               f"({change:+.1f} dB) and remember it")
             elif self.s.soft_only and self.s.device.pw_percent:
                 # PipeWire software volume is cubic: dB = 60·log10(v).
-                wanted = CALIB_TARGET_PEAK_DB - peak
+                wanted = target_peak_db(self.s.settings) - peak
                 pct = max(1, min(150, int(round(self.s.device.pw_percent * 10 ** (wanted / 60.0)))))
                 if abs(wanted) >= 1.5 and pct != self.s.device.pw_percent:
                     self._suggestion = ("soft", pct)

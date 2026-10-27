@@ -65,6 +65,11 @@ ZONE_CAUTION_HI = 15.0
 CALIB_QUIET_S = 3.0
 CALIB_SPEECH_S = 8.0
 CALIB_TARGET_PEAK_DB = -12.0
+# Conservative mode aims speech peaks at the bottom of the target band, so a
+# sudden loud source (a crying baby, a shout) has 18 dB instead of 12 dB of room
+# before full scale, and auto gain raises in half-size steps.
+CONSERVATIVE_TARGET_PEAK_DB = TARGET_LO_DB
+CONSERVATIVE_RAISE_STEP_DB = 1.5
 CALIB_MAX_NOISE_DB = -50.0
 CALIB_MIN_HEADROOM_DB = 12.0
 
@@ -86,6 +91,12 @@ except ImportError:                     # pragma: no cover - older interpreters
 # ---------------------------------------------------------------------------
 # shell helpers
 # ---------------------------------------------------------------------------
+
+def target_peak_db(settings):
+    """Speech peak every gain recommendation aims for, per the
+    `conservative_gain` setting."""
+    return CONSERVATIVE_TARGET_PEAK_DB if settings.get("conservative_gain") else CALIB_TARGET_PEAK_DB
+
 
 def run(cmd, timeout=8):
     """Run a command and return stdout, or "" if it failed in any way."""

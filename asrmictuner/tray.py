@@ -277,7 +277,11 @@ class TrayController(QObject):
         self.autogain_action = self.menu.addAction("ASR auto gain")
         self.autogain_action.setCheckable(True)
         self.autogain_action.setChecked(bool(self.s.settings.get("asr_autogain", True)))
-        self.autogain_action.toggled.connect(self._set_autogain)
+        self.autogain_action.toggled.connect(lambda on: self._set_setting("asr_autogain", on))
+        self.conservative_action = self.menu.addAction("Conservative gain")
+        self.conservative_action.setCheckable(True)
+        self.conservative_action.setToolTip("Aim speech lower, leaving room for sudden loud sounds")
+        self.conservative_action.toggled.connect(lambda on: self._set_setting("conservative_gain", on))
         self.asr_mic_action = self.menu.addAction("ASR Mic running")
         self.asr_mic_action.setCheckable(True)
         self.asr_mic_action.setToolTip("Stop or start ASR Mic for now (for a call, say); it comes back at login")
@@ -292,14 +296,15 @@ class TrayController(QObject):
         """Settings and ASR Effects have the same switches; show the current state."""
         for action, value in ((self.login_action, autostart.enabled()),
                               (self.autogain_action, bool(self.s.settings.get("asr_autogain", True))),
+                              (self.conservative_action, bool(self.s.settings.get("conservative_gain", False))),
                               (self.asr_mic_action, asrmic.running())):
             action.blockSignals(True)
             action.setChecked(value)
             action.blockSignals(False)
         self.asr_mic_action.setVisible(asrmic.enabled())
 
-    def _set_autogain(self, on):
-        self.s.settings["asr_autogain"] = on
+    def _set_setting(self, key, on):
+        self.s.settings[key] = on
         self.s.save_settings()
 
     def _set_asr_mic(self, on):

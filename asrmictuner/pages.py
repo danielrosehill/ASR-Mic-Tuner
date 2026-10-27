@@ -473,6 +473,14 @@ class SettingsPage(QWidget):
 
         quietbox = QGroupBox("While you dictate")
         ql = QFormLayout(quietbox)
+        self.conservative = QCheckBox("Conservative gain: leave room for sudden loud sounds")
+        self.conservative.setToolTip(
+            f"Recommendations, calibration and auto gain aim speech peaks at {TARGET_LO_DB:.0f} dBFS instead of "
+            "−12, so a shout or a crying baby has 18 dB before clipping instead of 12. Auto gain also raises "
+            "in 1.5 dB steps instead of 3. Lowering is unchanged.")
+        self.conservative.setChecked(bool(st.get("conservative_gain", False)))
+        self.conservative.toggled.connect(lambda on: self._set("conservative_gain", on))
+        ql.addRow("", self.conservative)
         self.autogain = QCheckBox("ASR auto gain: adjust the analog gain slowly towards the target")
         self.autogain.setToolTip("Judges 30 s of recording at a time, moves at most 3 dB, only in pauses, "
                                  "and never above the ceiling. Steps down at once on clipping.")
@@ -511,6 +519,7 @@ class SettingsPage(QWidget):
             self.watch.state_changed.connect(self._quiet_status)
             self.s.settings_changed.connect(self._quiet_status)
             self._quiet_status()
+        self.s.settings_changed.connect(self._sync_switches)
         root.addWidget(quietbox)
 
         databox = QGroupBox("Data")
@@ -531,6 +540,14 @@ class SettingsPage(QWidget):
     def _set(self, key, value):
         self.s.settings[key] = value
         self.s.save_settings()
+
+    def _sync_switches(self):
+        """The tray menu has the same switches; show the current state."""
+        for box, key, default in ((self.autogain, "asr_autogain", True),
+                                  (self.conservative, "conservative_gain", False)):
+            box.blockSignals(True)
+            box.setChecked(bool(self.s.settings.get(key, default)))
+            box.blockSignals(False)
 
     def _quiet_status(self):
         text = esc(self.watch.status())

@@ -11,10 +11,10 @@ from PyQt6.QtWidgets import (
 
 from . import analysis
 from .core import (
-    CALIB_MAX_NOISE_DB, CALIB_MIN_HEADROOM_DB, CALIB_TARGET_PEAK_DB,
+    CALIB_MAX_NOISE_DB, CALIB_MIN_HEADROOM_DB,
     SPEECH_GATE_FLOOR_DB, SPEECH_GATE_OVER_NOISE_DB, TARGET_HI_DB, TARGET_LO_DB,
     VERDICT_WINDOW_S, fmt_gain, fmt_level, percentile, resolve_hardware_for,
-    default_source, set_unit_enabled, unit_enabled, zone_for_db,
+    default_source, set_unit_enabled, target_peak_db, unit_enabled, zone_for_db,
 )
 from .qtutil import wrap_label
 from .widgets import ZONE_HEX, GainSlider, LevelMeter, SpectrumView
@@ -43,7 +43,7 @@ def live_verdict(session, data):
         return "Good level", "#2ea44f", detail, None
     headline, colour = (("Too quiet — raise the gain", "#3b7ad6") if peak < TARGET_LO_DB
                         else ("Too loud — lower the gain", "#d43333"))
-    wanted = CALIB_TARGET_PEAK_DB - peak
+    wanted = target_peak_db(session.settings) - peak
     fix = None
     if session.gain is not None and session.curve is not None:
         here = session.curve.db(session.gain.index)
@@ -574,7 +574,7 @@ class MonitorPage(QWidget):
 
         current = s.gain.index
         current_db = s.curve.db(current)
-        target = s.curve.index_for_db(current_db + CALIB_TARGET_PEAK_DB - speech_peak)
+        target = s.curve.index_for_db(current_db + target_peak_db(s.settings) - speech_peak)
         achieved = s.curve.db(target) - current_db
         predicted_noise = noise_rms + achieved
         lines.append(f"Recommendation: <b>index {current} → {target}</b>, {fmt_gain(current_db)} → "

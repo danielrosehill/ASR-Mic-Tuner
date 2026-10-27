@@ -40,8 +40,8 @@ from collections import deque
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from .core import (
-    CALIB_TARGET_PEAK_DB, CHUNK_MS, SPEECH_GATE_OVER_NOISE_DB, TARGET_HI_DB, TARGET_LO_DB, ZONE_CAUTION_HI,
-    fmt_gain, fmt_level, percentile, recording_clients,
+    CHUNK_MS, CONSERVATIVE_RAISE_STEP_DB, SPEECH_GATE_OVER_NOISE_DB, TARGET_HI_DB, TARGET_LO_DB, ZONE_CAUTION_HI,
+    fmt_gain, fmt_level, percentile, recording_clients, target_peak_db,
 )
 
 TICK_MS = 3000
@@ -195,7 +195,8 @@ class QuietWatch(QObject):
             level = percentile(recent, 95)
             if TARGET_LO_DB - AUTO_DEADBAND_DB <= level <= TARGET_HI_DB + AUTO_DEADBAND_DB:
                 return False
-            step = max(-AUTO_MAX_STEP_DB, min(AUTO_MAX_STEP_DB, CALIB_TARGET_PEAK_DB - level))
+            raise_max = CONSERVATIVE_RAISE_STEP_DB if self.s.settings.get("conservative_gain") else AUTO_MAX_STEP_DB
+            step = max(-AUTO_MAX_STEP_DB, min(raise_max, target_peak_db(self.s.settings) - level))
             why = f"speech peaks {fmt_level(level)}"
         if not self._in_pause(analyser):
             return False                 # try again at the next tick
@@ -266,7 +267,7 @@ class QuietWatch(QObject):
             "Microphone too quiet for dictation",
             f"{self.s.device.description}: over the last {minutes:.0f} min of recording your speech peaked "
             f"around {fmt_level(level)}, {short:.0f} dB under the {TARGET_LO_DB:.0f}…{TARGET_HI_DB:.0f} dBFS "
-            f"target. Raise the gain about {CALIB_TARGET_PEAK_DB - level:.0f} dB, or move closer to the mic.")
+            f"target. Raise the gain about {target_peak_db(self.s.settings) - level:.0f} dB, or move closer to the mic.")
         self._quiet_until = time.monotonic() + REPEAT_S
         self.reset()
 
