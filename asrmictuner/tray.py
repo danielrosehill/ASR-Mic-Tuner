@@ -7,7 +7,7 @@ notification. Left-click opens the pop-up, which listens only while shown.
 """
 
 from PyQt6.QtCore import QObject, Qt, QTimer
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QActionGroup, QIcon
 from PyQt6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QMenu, QPushButton, QSystemTrayIcon,
     QVBoxLayout, QWidget,
@@ -18,7 +18,7 @@ from . import asrmic, autostart, kwin
 from .kwin import POPUP_TITLE
 from .monitor import live_verdict
 from .qtutil import wrap_label
-from .widgets import ZONE_HEX, GainSlider, LevelMeter, tray_icon
+from .widgets import TRAY_STYLE_DEFAULT, TRAY_STYLES, ZONE_HEX, GainSlider, LevelMeter, tray_icon
 
 POLL_MS = 4000
 POPUP_W, POPUP_H = 400, 360
@@ -214,7 +214,7 @@ class TrayController(QObject):
         super().__init__()
         self.s = session
         self.ctl = app_controller
-        self.icon = QSystemTrayIcon(tray_icon("idle"))
+        self.icon = QSystemTrayIcon(tray_icon("idle", style=self._style()))
         self.icon.setToolTip("ASR Mic Tuner")
         self.icon.activated.connect(self._activated)
         self.popup = TrayPopup(session, app_controller)
@@ -274,6 +274,14 @@ class TrayController(QObject):
         self.menu.addAction(QIcon.fromTheme("media-playlist-shuffle"), "ASR Effects…",
                             lambda: self.ctl.show_window("effects"))
         self.menu.addSeparator()
+        styles = self.menu.addMenu("Icon style")
+        group = QActionGroup(styles)
+        for key, label in TRAY_STYLES:
+            act = styles.addAction(tray_icon("safe", style=key), label)
+            act.setCheckable(True)
+            act.setChecked(key == self._style())
+            act.triggered.connect(lambda _c=False, key=key: self._set_setting("tray_icon_style", key))
+            group.addAction(act)
         self.autogain_action = self.menu.addAction("ASR auto gain")
         self.autogain_action.setCheckable(True)
         self.autogain_action.setChecked(bool(self.s.settings.get("asr_autogain", True)))
@@ -324,7 +332,14 @@ class TrayController(QObject):
         elif reason == QSystemTrayIcon.ActivationReason.MiddleClick:
             self.ctl.show_window("monitor")
 
+    def _style(self):
+        return self.s.settings.get("tray_icon_style", TRAY_STYLE_DEFAULT)
+
     def _apply_settings(self):
+        if self._state is not None and self._state[2] != self._style():
+            QTimer.singleShot(0, self._build_menu)    # not from inside the menu's own signal
+            self._state = None
+            self.update_state()
         self._set_live(bool(self.s.settings.get("tray_live_meter")))
 
     def _set_live(self, on):
@@ -379,10 +394,10 @@ class TrayController(QObject):
         self._set_icon(state, tip)
 
     def _set_icon(self, state, tip, level=None):
-        key = (state, None if level is None else round(level * 8))
+        key = (state, None if level is None else round(level * 8), self._style())
         if key != self._state:
             self._state = key
-            self.icon.setIcon(tray_icon(state, None if level is None else round(level * 8) / 8))
+            self.icon.setIcon(tray_icon(state, None if level is None else round(level * 8) / 8, key[2]))
         self.icon.setToolTip(tip)
 
     def _live_tick(self):

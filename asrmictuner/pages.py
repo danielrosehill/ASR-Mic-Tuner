@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from . import ai, autostart, kwin, store
 from .core import TARGET_LO_DB, fmt_gain, fmt_level
+from .widgets import TRAY_STYLE_DEFAULT, TRAY_STYLES, tray_icon
 from .qtutil import (
     ask_ai, ask_text, ai_html, esc, findings_html, key_result, metrics_html, run_async,
     wrap_label,
@@ -463,6 +464,18 @@ class SettingsPage(QWidget):
             box.setChecked(bool(st.get(key)))
             box.toggled.connect(lambda on, key=key: self._set(key, on))
             tl.addWidget(box)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Tray icon"))
+        self.icon_style = QComboBox()
+        for key, label in TRAY_STYLES:
+            self.icon_style.addItem(tray_icon("safe", style=key), label, key)
+        self.icon_style.setCurrentIndex(max(0, self.icon_style.findData(
+            st.get("tray_icon_style", TRAY_STYLE_DEFAULT))))
+        self.icon_style.currentIndexChanged.connect(
+            lambda _i: self._set("tray_icon_style", self.icon_style.currentData()))
+        row.addWidget(self.icon_style)
+        row.addStretch(1)
+        tl.addLayout(row)
         self.pin.setChecked(kwin.rule_installed())
         self.pin.toggled.connect(self._pin)
         tl.addWidget(self.pin)
@@ -548,6 +561,10 @@ class SettingsPage(QWidget):
             box.blockSignals(True)
             box.setChecked(bool(self.s.settings.get(key, default)))
             box.blockSignals(False)
+        self.icon_style.blockSignals(True)
+        self.icon_style.setCurrentIndex(max(0, self.icon_style.findData(
+            self.s.settings.get("tray_icon_style", TRAY_STYLE_DEFAULT))))
+        self.icon_style.blockSignals(False)
 
     def _quiet_status(self):
         text = esc(self.watch.status())

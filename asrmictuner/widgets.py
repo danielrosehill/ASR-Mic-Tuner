@@ -412,46 +412,138 @@ class ScoreBadge(QWidget):
         p.drawText(rect.adjusted(0, 26, 0, 0), Qt.AlignmentFlag.AlignCenter, self.grade)
 
 
-# Fader knob height (0 bottom .. 1 top) per state when there is no live level.
-TRAY_KNOB_POS = {"idle": 0.5, "low": 0.2, "safe": 0.5, "caution": 0.7, "danger": 0.88,
-                 "clip": 0.88, "drift": 0.5}
+# Tray icon styles, chosen in Settings or the tray menu (setting `tray_icon_style`).
+# None of them uses a round status dot: a red dot reads as "recording" and
+# collides with other tray indicators. The status colour tints the style's
+# main element instead; with a live level, that element fills from the bottom.
+TRAY_STYLES = (("popfilter", "Pop filter"), ("studio", "Studio mic"),
+               ("wave", "Speech wave"), ("headset", "Headset"))
+TRAY_STYLE_DEFAULT = "popfilter"
+C_TRAY_FG = QColor(225, 225, 225)
 
 
-def tray_icon(state, level=None):
-    """Microphone glyph beside a mixer fader whose knob carries the status
-    colour. No round dot: a red dot reads as "recording" and collides with
-    other tray indicators. `state`: idle | low | safe | caution | danger |
-    clip | drift. `level`: optional 0..1, moves the knob live."""
+def _tray_fill(p, path, colour, level):
+    """Fill `path` with `colour`; a live `level` (0..1) fills only that much
+    from the bottom, over a faint full fill."""
+    p.setPen(Qt.PenStyle.NoPen)
+    if level is None:
+        p.setBrush(colour)
+        p.drawPath(path)
+        return
+    p.setBrush(alpha(colour, 0.3))
+    p.drawPath(path)
+    box = path.boundingRect()
+    top = box.bottom() - max(0.0, min(1.0, level)) * box.height()
+    p.save()
+    p.setClipRect(QRectF(box.left(), top, box.width(), box.bottom() - top))
+    p.setBrush(colour)
+    p.drawPath(path)
+    p.restore()
+
+
+def _tray_lines(p, path, lines, width=2.0):
+    p.save()
+    p.setClipPath(path)
+    p.setPen(QPen(alpha(QColor(20, 20, 20), 0.55), width))
+    for a, b in lines:
+        p.drawLine(QPointF(*a), QPointF(*b))
+    p.restore()
+
+
+def _draw_popfilter(p, colour, level):
+    fg = QPen(C_TRAY_FG, 4, cap=Qt.PenCapStyle.RoundCap)
+    # The mic, behind the filter.
+    p.setPen(fg)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRoundedRect(QRectF(38, 6, 20, 32), 10, 10)
+    p.drawLine(QPointF(48, 40), QPointF(48, 56))
+    p.drawLine(QPointF(38, 58), QPointF(58, 58))
+    # Gooseneck from the filter to the stand.
+    arm = QPainterPath(QPointF(22, 46))
+    arm.quadTo(QPointF(26, 60), QPointF(46, 52))
+    p.setPen(QPen(C_TRAY_FG, 3, cap=Qt.PenCapStyle.RoundCap))
+    p.drawPath(arm)
+    # The filter: tinted mesh in a ring.
+    disc = QPainterPath()
+    disc.addEllipse(QRectF(3, 6, 38, 38))
+    _tray_fill(p, disc, colour, level)
+    _tray_lines(p, disc, [((x, 6), (x + 38, 44)) for x in range(-34, 41, 8)]
+                + [((x, 44), (x + 38, 6)) for x in range(-34, 41, 8)], 1.6)
+    p.setPen(QPen(C_TRAY_FG, 4))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawPath(disc)
+
+
+def _draw_studio(p, colour, level):
+    head = QPainterPath()
+    head.addRoundedRect(QRectF(18, 3, 28, 40), 14, 14)
+    _tray_fill(p, head, colour, level)
+    _tray_lines(p, head, [((18, y), (46, y)) for y in range(10, 42, 6)])
+    fg = QPen(C_TRAY_FG, 4, cap=Qt.PenCapStyle.RoundCap)
+    p.setPen(fg)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawPath(head)
+    p.drawArc(QRectF(10, 14, 44, 38), 200 * 16, 140 * 16)     # shock mount
+    p.drawLine(QPointF(32, 52), QPointF(32, 59))
+    p.drawLine(QPointF(20, 60), QPointF(44, 60))
+
+
+def _draw_wave(p, colour, level):
+    scale = 1.0 if level is None else max(0.15, min(1.0, level))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(colour)
+    for x, h in ((6, 0.35), (18, 0.7), (30, 1.0), (42, 0.6), (54, 0.3)):
+        height = max(8.0, 56 * h * scale)
+        p.drawRoundedRect(QRectF(x - 4.5, 32 - height / 2, 9, height), 4.5, 4.5)
+
+
+def _draw_headset(p, colour, level):
+    p.setPen(QPen(C_TRAY_FG, 5, cap=Qt.PenCapStyle.RoundCap))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawArc(QRectF(9, 4, 46, 46), 10 * 16, 160 * 16)
+    boom = QPainterPath(QPointF(10, 46))
+    boom.quadTo(QPointF(12, 58), QPointF(30, 57))
+    p.setPen(QPen(C_TRAY_FG, 3.5, cap=Qt.PenCapStyle.RoundCap))
+    p.drawPath(boom)
+    p.setBrush(C_TRAY_FG)
+    p.drawRoundedRect(QRectF(29, 53, 10, 8), 4, 4)
+    for x in (4, 46):
+        cup = QPainterPath()
+        cup.addRoundedRect(QRectF(x, 24, 14, 24), 6, 6)
+        _tray_fill(p, cup, colour, level)
+        p.setPen(QPen(C_TRAY_FG, 3))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(cup)
+
+
+TRAY_DRAW = {"popfilter": _draw_popfilter, "studio": _draw_studio,
+             "wave": _draw_wave, "headset": _draw_headset}
+
+
+def tray_icon(state, level=None, style=TRAY_STYLE_DEFAULT):
+    """Tray icon in `style` (see TRAY_STYLES), tinted by `state`: idle | low |
+    safe | caution | danger | clip | drift. Drift and clip add a warning
+    triangle. `level`: optional 0..1 live level."""
     size = 64
     pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
     p = QPainter(pix)
     p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    base = QIcon.fromTheme("audio-input-microphone-symbolic",
-                           QIcon.fromTheme("audio-input-microphone"))
-    if not base.isNull():
-        base.paint(p, -2, 8, 42, 48)
-    else:
-        p.setPen(QPen(QColor(220, 220, 220), 5))
-        p.drawRoundedRect(QRectF(13, 10, 16, 26), 8, 8)
-        p.drawArc(QRectF(6, 20, 30, 26), 180 * 16, 180 * 16)
-        p.drawLine(21, 46, 21, 56)
     colour = {
         "low": C_LOW, "safe": C_TARGET, "caution": C_CAUTION, "danger": C_DANGER,
         "clip": C_DANGER, "drift": C_CAUTION,
-    }.get(state, QColor(170, 170, 170))
-    top, bottom, x = 9.0, 55.0, 51.0
-    pos = TRAY_KNOB_POS.get(state, 0.5) if level is None else max(0.0, min(1.0, level))
-    knob_y = bottom - pos * (bottom - top)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(110, 110, 110))
-    p.drawRoundedRect(QRectF(x - 5, top, 10, bottom - top), 4, 4)
-    p.setBrush(colour)
-    p.drawRoundedRect(QRectF(x - 5, knob_y, 10, bottom - knob_y), 4, 4)
-    p.setPen(QPen(QColor(20, 20, 20), 3))
-    p.drawRoundedRect(QRectF(x - 12, knob_y - 9, 24, 18), 4, 4)
+    }.get(state, C_TRAY_FG)
+    TRAY_DRAW.get(style, TRAY_DRAW[TRAY_STYLE_DEFAULT])(p, colour, level)
     if state in ("drift", "clip"):
-        p.setPen(QPen(QColor(255, 255, 255), 4))
-        p.drawLine(QPointF(x - 6, knob_y), QPointF(x + 6, knob_y))
+        tri = QPainterPath(QPointF(51, 36))
+        tri.lineTo(QPointF(64, 62))
+        tri.lineTo(QPointF(38, 62))
+        tri.closeSubpath()
+        p.setPen(QPen(QColor(20, 20, 20), 2))
+        p.setBrush(C_CAUTION if state == "drift" else C_DANGER)
+        p.drawPath(tri)
+        p.setPen(QPen(QColor(20, 20, 20), 4, cap=Qt.PenCapStyle.RoundCap))
+        p.drawLine(QPointF(51, 45), QPointF(51, 52))
+        p.drawPoint(QPointF(51, 58))
     p.end()
     return QIcon(pix)

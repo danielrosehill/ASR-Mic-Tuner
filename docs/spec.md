@@ -443,10 +443,30 @@ and user unit), `fxpage.py` (the tab). Reference: `docs/effects.md`.
   immediate step down on clipping are unchanged. The target band itself
   (−18…−10) and the readiness score do not change, so −18 still reads "Good
   level". Findings text already stored with older measurements still quotes −12.
-- **Tray icon redrawn** (`widgets.tray_icon`): the round status dot read as a
+- **Tray icon redrawn** (`widgets.tray_icon`; superseded in v2.2, §16): the round status dot read as a
   recording indicator and looked like another tray app's icon. It is now a
   microphone beside a vertical fader; the knob carries the zone colour and sits
   at a height per state (`TRAY_KNOB_POS`), or follows the live level when one
   is passed. Idle is a grey knob, so the icon is never just a bare mic. Drift
   and clip add a white bar across the knob in place of the old "!". Rendered
   offscreen at 64 and 24 px and checked by eye before release.
+
+## 16. v2.2 additions (2026-10-27)
+
+- **Tray icon styles.** The v2.1 mic-plus-fader looked like a red stand in the
+  real Plasma panel and was rejected. `widgets.TRAY_STYLES` now offers
+  `popfilter` (default; a meshed pop filter in front of a mic), `studio` (a
+  condenser with a grille on a shock mount), `wave` (five speech bars) and
+  `headset` (headband, ear cups, boom). Setting `tray_icon_style`; chosen from
+  a radio submenu in the tray menu ("Icon style", each item shows its icon) or
+  a combo in Settings → Tray and session, kept in sync both ways through
+  `settings_changed`. The status colour tints the main element (filter mesh,
+  grille, bars, ear cups), light grey when idle; a live level fills it from
+  the bottom (the wave scales its bars). Drift and clip draw a warning
+  triangle bottom right (amber / red). Still no round dot anywhere.
+- The tray rebuilds its menu with `QTimer.singleShot(0, ...)` on a style
+  change, because the change arrives from inside one of that menu's own
+  actions and `menu.clear()` there would delete the sender.
+- Checked offscreen at 64 and 22 px for all styles and states, and by
+  switching style from the tray menu and from Settings in an offscreen
+  session (each updated the other and the icon).
