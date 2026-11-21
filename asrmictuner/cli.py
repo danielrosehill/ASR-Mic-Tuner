@@ -38,8 +38,10 @@ def _devices_json():
                 }
             entry["boosts"] = [{"control": b.name, "index": b.index, "db": b.db}
                                for b in pick_boost_controls(controls)]
-        entry["remembered"] = config["devices"].get(d.name)
-        entry["presets"] = config["presets"].get(d.name, {})
+        entry["mic_key"] = d.key
+        entry["identity"] = d.ident
+        entry["remembered"] = config["devices"].get(d.key)
+        entry["presets"] = config["presets"].get(d.key, {})
         out.append(entry)
     return out
 
@@ -72,7 +74,7 @@ def _measure(kind, seconds, device_name, location, notes):
     room = None
     if kind == "voice":
         settings = store.load_settings()
-        pid = settings.get("active_room_profile", {}).get(dev.name)
+        pid = settings.get("active_room_profile", {}).get(dev.key)
         prof = db.profile(pid) if pid else None
         room = prof.get("metrics") if prof else None
     metrics = (analysis.analyse_room(audio, dev.rate) if kind == "room"
@@ -81,7 +83,7 @@ def _measure(kind, seconds, device_name, location, notes):
     prof_path = store.make_noise_profile(path) if kind == "room" else None
     gain = pick_gain_control(read_controls(dev.card)) if dev.is_hardware else None
     mid = db.add_measurement(
-        kind=kind, device=dev.name, device_label=dev.description,
+        kind=kind, device=dev.name, mic_key=dev.key, device_label=dev.description,
         gain_control=gain.name if gain else None, gain_index=gain.index if gain else None,
         gain_db=gain.db if gain else None, soft_percent=dev.pw_percent,
         location=location, notes=notes, duration_s=len(audio) / dev.rate,
@@ -97,7 +99,8 @@ def _tune(seconds, device_name, place, apply=True):
     from . import analysis, store, tune
     from .capture import Analyser
     from .core import (Curve, curve_cache_key, default_source, fmt_gain, list_devices, load_config,
-                       pick_gain_control, read_controls, resolve_hardware_for, save_config)
+                       note_identity, pick_gain_control, read_controls, resolve_hardware_for,
+                       save_config)
 
     devices = list_devices()
     by_name = {d.name: d for d in devices}
@@ -145,11 +148,12 @@ def _tune(seconds, device_name, place, apply=True):
                  "index": gain.index, "db": curve.db(gain.index), "control": gain.name, "port": dev.port,
                  "noise_reduction": settings.get("noise_reduction", "off"),
                  "tuned": dict(passes[-1]["summary"], at=datetime.now().astimezone().isoformat(timespec="seconds"))}
-        config["presets"].setdefault(dev.name, {})[label] = entry
-        config["devices"][dev.name] = {"card_name": dev.card_name, "control": gain.name, "numid": gain.numid,
+        note_identity(config, dev)
+        config["presets"].setdefault(dev.key, {})[label] = entry
+        config["devices"][dev.key] = {"card_name": dev.card_name, "control": gain.name, "numid": gain.numid,
                                        "index": gain.index, "db": curve.db(gain.index),
                                        "saved": entry["created"]}
-        config.setdefault("active_profile", {})[f"{dev.name}:{dev.port}"] = label
+        config.setdefault("active_profile", {}).setdefault(dev.key, {})[dev.port] = label
         save_config(config)
     print(json.dumps({"ok": True, "device": dev.name, "port": dev.port, "profile": label if apply else None,
                       "gain_db": curve.db(gain.index), "passes": passes}, indent=2))

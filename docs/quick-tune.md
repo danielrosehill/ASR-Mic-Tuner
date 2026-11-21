@@ -21,10 +21,11 @@ follow timer in `app.py`, the buttons in `tray.py` (pop-up) and `measure.py`.
    - any clipped run, or a max peak ≥ −1 dBFS: 3 dB lower target;
    - < 1.5 dB off: leave the gain; > 6 dB off: apply, then listen 15 s more and
      correct again (the first estimate was made far from the target).
-4. Saves a **profile**: `devices.json` → `presets[<device>][<place>]` with `index`,
+4. Saves a **profile**: the mic's profile file (`profiles/<mic key>.json`, v2.7; was
+   `devices.json` keyed by node name) → `presets[<place>]` with `index`,
    `db`, `control`, `port`, `noise_reduction`, and `tuned` (speech peak and RMS,
    noise, SNR, score, time). It also becomes the remembered gain (login restore) and
-   the mic's **active profile**, `active_profile["<device>:<port>"]`. The place is
+   the mic's **active profile**, `active_profile[<port>]` in the same file. The place is
    the Place box (defaults to the window's location, else `Default`). Each pass is
    also logged to History as a voice measurement, notes `Quick tune pass N (<place>)`.
 

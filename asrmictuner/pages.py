@@ -113,8 +113,10 @@ class HistoryPage(QWidget):
 
     def reload(self):
         keep = self.current()
-        device = self.s.device.name if (self.scope.currentIndex() == 0 and self.s.device) else None
-        self.rows = self.s.store.measurements(device=device, kind=self.kind.currentData())
+        mine = self.scope.currentIndex() == 0 and self.s.device
+        self.rows = self.s.store.measurements(device=self.s.device.name if mine else None,
+                                              mic_key=self.s.device.key if mine else None,
+                                              kind=self.kind.currentData())
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(self.rows))
         select = None

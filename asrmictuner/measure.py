@@ -245,7 +245,7 @@ class MeasurePage(QWidget):
             return
         self.mic_box.setTitle(f"This microphone: {d.description}")
         parts = []
-        last = self.s.store.measurements(device=d.name, kind="voice", limit=1)
+        last = self.s.store.measurements(device=d.name, mic_key=d.key, kind="voice", limit=1)
         if last:
             m = last[0]
             mm = m.get("metrics") or {}
@@ -262,7 +262,7 @@ class MeasurePage(QWidget):
         elif self.s.soft_only:
             parts.append("No analog gain control: adjustments use software volume.")
         from . import engine
-        name = (self.s.settings.get("chain_bindings") or {}).get(engine.binding_key(d.name, d.port))
+        name = engine.bound_chain(self.s.settings, d)
         if name:
             parts.append(f"ASR chain: <b>{esc(name)}</b>" + ("" if name in engine.chain_names() else
                          " <span style='color:#d43333'>(chain missing)</span>") + " (ASR Effects tab).")
@@ -441,7 +441,8 @@ class MeasurePage(QWidget):
             return
         pid = self.s.store.add_profile(kind, name, self.current["device"], self.current["id"],
                                        self.notes.text())
-        if kind == "room" and self.s.device and self.current["device"] == self.s.device.name:
+        if kind == "room" and self.s.device and (self.current.get("mic_key") or self.current["device"]) in (
+                self.s.device.key, self.s.device.name):
             self.s.set_active_room_profile(pid)
             self.state.setText(f"Room profile “{esc(name)}” saved and set active for this device.")
         else:

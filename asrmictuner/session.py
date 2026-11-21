@@ -14,11 +14,11 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from .capture import Analyser
 from .core import (
-    Curve, curve_cache_key, default_source, list_devices, load_config,
+    Curve, _adopt_legacy, curve_cache_key, default_source, list_devices, load_config, note_identity,
     pick_boost_controls, pick_gain_control, probe_curve, read_controls,
     resolve_hardware_for, save_config, set_source_percent,
 )
-from .store import Store, load_settings, save_settings
+from .store import Store, _adopt_legacy_settings, load_settings, save_settings
 
 
 class Session(QObject):
@@ -48,6 +48,16 @@ class Session(QObject):
     # -- devices --
     def rescan(self):
         self.devices = list_devices()
+        known = getattr(self, "_known_keys", set())
+        if {d.key for d in self.devices} - known:
+            # A mic seen for the first time this run: give its older history
+            # rows and any legacy (node-name keyed) settings its key.
+            self._known_keys = known | {d.key for d in self.devices}
+            self.store.backfill_keys(self.devices)
+            if self.config.get("legacy"):
+                _adopt_legacy(self.config, self.devices)
+            if self.settings.get("legacy"):
+                _adopt_legacy_settings(self.settings, self.devices)
         return self.devices
 
     def preferred_device(self):
@@ -192,12 +202,13 @@ class Session(QObject):
 
     # -- remembered gain (what --restore and the login unit reapply) --
     def remembered(self):
-        return self.config["devices"].get(self.device.name) if self.device else None
+        return self.config["devices"].get(self.device.key) if self.device else None
 
     def remember_current(self):
         if not self.device or self.gain is None:
             return
-        self.config["devices"][self.device.name] = {
+        note_identity(self.config, self.device)
+        self.config["devices"][self.device.key] = {
             "card_name": self.device.card_name,
             "control": self.gain.name,
             "numid": self.gain.numid,
@@ -210,7 +221,7 @@ class Session(QObject):
 
     def forget(self):
         if self.device:
-            self.config["devices"].pop(self.device.name, None)
+            self.config["devices"].pop(self.device.key, None)
             save_config(self.config)
             self.presets_changed.emit()
 
@@ -229,8 +240,8 @@ class Session(QObject):
 
     # -- named presets --
     def presets(self, device=None):
-        name = device or (self.device.name if self.device else None)
-        return self.config["presets"].get(name, {}) if name else {}
+        key = device or (self.device.key if self.device else None)
+        return self.config["presets"].get(key, {}) if key else {}
 
     def save_preset(self, label, notes=""):
         if not self.device:
@@ -240,7 +251,8 @@ class Session(QObject):
             entry.update(index=self.gain.index, db=self.gain_db(), control=self.gain.name)
         else:
             entry.update(soft_percent=self.device.pw_percent)
-        self.config["presets"].setdefault(self.device.name, {})[label] = entry
+        note_identity(self.config, self.device)
+        self.config["presets"].setdefault(self.device.key, {})[label] = entry
         save_config(self.config)
         self.presets_changed.emit()
 
@@ -265,24 +277,24 @@ class Session(QObject):
     # -- profiles (v2.6): a preset per mic, port and place, made by quick tune --
     def _device_key(self, device=None):
         d = device or self.device
-        return f"{d.name}:{d.port}" if d else None
+        return (d.key, d.port) if d else None
 
     def _set_active_profile(self, label):
-        key = self._device_key()
-        if key:
-            self.config.setdefault("active_profile", {})[key] = label
+        if self.device:
+            note_identity(self.config, self.device)
+            self.config.setdefault("active_profile", {}).setdefault(self.device.key, {})[self.device.port] = label
             save_config(self.config)
 
     def active_profile(self):
-        key = self._device_key()
-        label = self.config.get("active_profile", {}).get(key) if key else None
+        d = self.device
+        label = self.config.get("active_profile", {}).get(d.key, {}).get(d.port) if d else None
         return label if label in self.presets() else None
 
     def save_profile(self, label, tuned=None):
         """Save the current gain, port and noise reduction as profile `label`,
         make it the remembered gain and the active profile for this mic."""
         self.save_preset(label, notes="Quick tune" if tuned else "")
-        entry = self.config["presets"][self.device.name][label]
+        entry = self.config["presets"][self.device.key][label]
         entry["port"] = self.device.port
         entry["noise_reduction"] = self.settings.get("noise_reduction", "off")
         if tuned:
@@ -331,7 +343,7 @@ class Session(QObject):
         return False
 
     def delete_preset(self, label):
-        presets = self.config["presets"].get(self.device.name, {}) if self.device else {}
+        presets = self.config["presets"].get(self.device.key, {}) if self.device else {}
         if label in presets:
             del presets[label]
             save_config(self.config)
@@ -365,7 +377,7 @@ class Session(QObject):
     def active_room_profile(self):
         if not self.device:
             return None
-        pid = self.settings.get("active_room_profile", {}).get(self.device.name)
+        pid = self.settings.get("active_room_profile", {}).get(self.device.key)
         return self.store.profile(pid) if pid else None
 
     def set_active_room_profile(self, pid):
@@ -373,9 +385,9 @@ class Session(QObject):
             return
         self.settings.setdefault("active_room_profile", {})
         if pid is None:
-            self.settings["active_room_profile"].pop(self.device.name, None)
+            self.settings["active_room_profile"].pop(self.device.key, None)
         else:
-            self.settings["active_room_profile"][self.device.name] = pid
+            self.settings["active_room_profile"][self.device.key] = pid
         self.save_settings()
         self.profiles_changed.emit()
 
@@ -385,6 +397,7 @@ class Session(QObject):
             return {}
         return {
             "device": self.device.name,
+            "mic_key": self.device.key,
             "device_label": self.device.description,
             "gain_control": self.gain.name if self.gain else None,
             "gain_index": self.gain.index if self.gain else None,
@@ -425,7 +438,8 @@ class Session(QObject):
             context["room_profile"] = room.get("metrics")
             context["room_profile_name"] = room.get("name")
         recent = []
-        for m in self.store.measurements(device=measurement.get("device"), limit=8):
+        for m in self.store.measurements(device=measurement.get("device"), mic_key=measurement.get("mic_key"),
+                                         limit=8):
             if m["id"] == measurement.get("id"):
                 continue
             metrics = m.get("metrics") or {}

@@ -1,6 +1,7 @@
 # Identifying a microphone reliably
 
-Status: exploration, 2026-11-21.
+Status: shipped in v2.7 (2026-11-21). The shipped design and test results are in
+`docs/mic-identity.md`; this file keeps the reasoning.
 
 ## Today (v2.6, confirmed in code)
 

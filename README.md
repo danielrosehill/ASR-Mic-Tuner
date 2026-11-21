@@ -133,13 +133,14 @@ asr-mic-tuner --asr-mic                       # run ASR Mic's chain (used by its
 
 | Path | Contents |
 |---|---|
-| `~/.config/asr-mic-tuner/devices.json` | remembered gain per device, named presets and profiles (`presets`, with `port`, `noise_reduction`, `tuned`), the active profile per mic and port (`active_profile`), probed-curve cache |
+| `~/.config/asr-mic-tuner/profiles/<mic key>.json` | one file per microphone (v2.7, `docs/mic-identity.md`): its identity (vendor/product ID, serial, codec, machine), remembered gain, profiles (`presets`, with `port`, `noise_reduction`, `tuned`), the active profile per port (`active_profile`) and the chain bound per port (`chain_bindings`) |
+| `~/.config/asr-mic-tuner/devices.json` | probed-curve cache, and pre-v2.7 entries for mics not seen since the upgrade (`legacy`) |
 | `~/.config/asr-mic-tuner/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
 | `~/.local/share/asr-mic-tuner/history.db` | SQLite: `measurements`, `profiles` |
 | `~/.local/share/asr-mic-tuner/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
 | `~/.config/systemd/user/asr-mic-tuner-asr-mic.service` | ASR Mic (only when you turn it on) |
 | `~/.config/autostart/asr-mic-tuner.desktop` | start in the tray at login (Settings or tray menu) |
-| `~/.config/asr-mic-tuner/chains/*.json` | saved ASR chains (bindings are in `settings.json`) |
+| `~/.config/asr-mic-tuner/chains/*.json` | saved ASR chains (bindings are in each mic's profile file) |
 | `~/.config/asr-mic-tuner/asr-mic-chain.conf`, `asr-mic-state.json` | the PipeWire config ASR Mic is running, and what it is running |
 | `~/.local/share/asr-mic-tuner/plugins/` | RNNoise and DeepFilterNet, if you fetched them |
 | `~/.config/kwinrulesrc` group `asr-mic-tuner-tray-popup` | KWin rule that places the pop-up (see [`docs/kde-integration.md`](docs/kde-integration.md)) |

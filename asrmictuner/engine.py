@@ -349,8 +349,26 @@ def delete_chain(name):
     (CHAINS_DIR / f"{name}.json").unlink(missing_ok=True)
 
 
-def binding_key(device_name, port):
-    return f"{device_name}:{port or ''}"
+def bound_chain(settings, device):
+    """The chain bound to `device` on its current port, or None.
+    Bindings are `chain_bindings[mic_key][port]` (v2.7; profiles.py)."""
+    if device is None:
+        return None
+    return ((settings.get("chain_bindings") or {}).get(device.key) or {}).get(device.port or "")
+
+
+def set_binding(settings, device, name):
+    """Bind (or with name=None unbind) a chain to `device` on its port."""
+    b = settings.setdefault("chain_bindings", {})
+    ports = dict(b.get(device.key) or {})
+    if name:
+        ports[device.port or ""] = name
+    else:
+        ports.pop(device.port or "", None)
+    if ports:
+        b[device.key] = ports
+    else:
+        b.pop(device.key, None)
 
 
 # ---------------------------------------------------------------------------

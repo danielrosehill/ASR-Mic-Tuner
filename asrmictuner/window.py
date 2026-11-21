@@ -1,6 +1,7 @@
 """The main window: device and location header, six tabs, status bar."""
 
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QComboBox, QHBoxLayout, QLabel, QMainWindow, QPushButton, QScrollArea,
@@ -8,6 +9,7 @@ from PyQt6.QtWidgets import (
 )
 
 from . import VERSION
+from .identity import describe as _describe_identity
 from .fxpage import EffectsPage
 from .measure import MeasurePage
 from .monitor import MonitorPage
@@ -20,6 +22,10 @@ def scrolled(widget):
     area.setFrameShape(QScrollArea.Shape.NoFrame)
     area.setWidget(widget)
     return area
+
+
+def identity_tooltip(device):
+    return _describe_identity(device.ident)
 
 
 class MainWindow(QMainWindow):
@@ -97,6 +103,7 @@ class MainWindow(QMainWindow):
         for d in self.s.devices:
             self.devices.addItem(QIcon.fromTheme("audio-card" if d.is_hardware else "audio-input-microphone"),
                                  d.label, d.name)
+            self.devices.setItemData(self.devices.count() - 1, identity_tooltip(d), Qt.ItemDataRole.ToolTipRole)
         self._filling = False
         self._sync_combo()
 

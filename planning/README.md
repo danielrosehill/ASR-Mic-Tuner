@@ -20,6 +20,7 @@ Rules for this folder (it is public):
 | `explorations/profile-store.md` | Where profiles live: local store now, private Git repo next, cloud sync later |
 | `explorations/asr-mic-gain.md` | Should ASR Mic have its own gain, separate from the hardware gain? |
 | `explorations/asr-format.md` | Sample rate, channels and bit depth for local ASR |
+| `explorations/preset-sources.md` | Published mic/voice chains and papers on enhancement and Whisper accuracy: what to borrow as presets |
 | `explorations/effects-for-asr.md` | Effects worth adding for recognition accuracy, and how to prove they help |
 
 Started 2026-11-21, at v2.6.

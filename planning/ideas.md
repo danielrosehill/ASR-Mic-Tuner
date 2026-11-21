@@ -12,6 +12,8 @@ Dated 2026-11-21 unless noted. Ideas move into `sprints.md` when they are schedu
 - **16 kHz ASR Mic option** to match local recognisers. See `explorations/asr-format.md`. → Sprint 3.
 - **Accuracy (WER) harness** to choose effects and chains on evidence. See
   `explorations/effects-for-asr.md`. → Sprint 4.
+- **Starter presets** borrowed from published mic chains (values only, with attribution),
+  validated by the harness. See `explorations/preset-sources.md`. → Sprint 5.
 - **Echo cancellation** (PipeWire WebRTC) for dictating while audio plays. → Sprint 5.
 - **Dereverberation** for internal laptop mics. Needs a backend search first.
 - **Chain in the profile**: a profile carries its whole chain, not just the noise

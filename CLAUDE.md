@@ -41,7 +41,8 @@ reads it.
 
 `docs/spec.md` (design and the processing boundary, §3 and §14), `docs/effects.md`
 (every effect, its backend and test results), `docs/asr-mic.md` (the ASR Mic source),
-`docs/analysis.md` (every metric and threshold).
+`docs/analysis.md` (every metric and threshold), `docs/mic-identity.md` (the mic key and
+per-mic profile files: everything remembered is keyed by `Device.key`, never the node name).
 
 ## Planning
 

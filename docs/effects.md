@@ -10,8 +10,10 @@ Every effect runs inside PipeWire as part of ASR Mic's filter-chain
              {"kind": "autogain", "bypass": false, "settings": {"target": -20, "history": 30, "max_boost": 12, "max_cut": 12}}]}
 ```
 
-Bindings live in `settings.json` under `chain_bindings`, keyed `"<device>:<port description>"`
-(e.g. `alsa_input.pci-0000_04_00.6.analog-stereo:Internal Microphone`).
+Bindings live in each mic's profile file (`profiles/<mic key>.json`, v2.7) under
+`chain_bindings`, keyed by port description (e.g. `{"Internal Microphone": "Laptop"}`); in
+memory they are `settings["chain_bindings"][<mic key>][<port>]` (`engine.bound_chain`,
+`engine.set_binding`). The mic key is described in `docs/mic-identity.md`.
 
 | Effect | Implementation | Needs |
 |---|---|---|

@@ -16,7 +16,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import APP
+from . import APP, identity, profiles
 
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / APP
 DEVICES_FILE = CONFIG_DIR / "devices.json"
@@ -524,6 +524,10 @@ class Device:
         active = entry.get("active_port")
         self.port = next((p.get("description", "") for p in entry.get("ports") or []
                           if p.get("name") == active), "")
+        # Identity that follows the physical mic (identity.py): everything
+        # remembered about a mic is keyed by `key`, not by the node name.
+        self.ident = identity.identity(self.name, props, self.card)
+        self.key = self.ident["key"]
 
         spec = entry.get("sample_specification", "")
         channels = _SPEC.search(spec)
@@ -667,26 +671,106 @@ def resolve_hardware_for(virtual_name):
 # saved settings
 # ---------------------------------------------------------------------------
 
-def load_config():
-    """devices.json: remembered gain per device, named presets, probe cache.
+CONFIG_REV = 27
 
-    `devices[name]` is the remembered (default) gain that `--restore`
-    reapplies; `presets[name][preset]` are the named alternatives, one of
-    which can be promoted to the remembered value.
+
+def load_config():
+    """Remembered gain, named presets (profiles) and the active profile per
+    mic, keyed by mic_key, plus the machine-local probe cache.
+
+    `devices[key]` is the remembered (default) gain that `--restore` reapplies;
+    `presets[key][place]` are the named alternatives; `active_profile[key][port]`
+    is the profile in use on that port; `identities[key]` is identity.identity().
+    Since v2.7 the per-mic parts live in profiles/<key>.json (profiles.py) and
+    devices.json keeps only `curves` and anything not yet migrated (`legacy`).
     """
     try:
         data = json.loads(DEVICES_FILE.read_text())
     except (OSError, json.JSONDecodeError):
         data = {}
-    data.setdefault("devices", {})
+    if int(data.get("rev", 0)) < CONFIG_REV:
+        # v2.6 and earlier: everything keyed by PipeWire node name.
+        old_active = {}
+        for k, label in (data.get("active_profile") or {}).items():
+            name, _, port = k.partition(":")
+            old_active.setdefault(name, {})[port] = label
+        data["legacy"] = {"devices": data.pop("devices", {}) or {},
+                          "presets": data.pop("presets", {}) or {},
+                          "active_profile": old_active}
+        data.pop("active_profile", None)
+        data["rev"] = CONFIG_REV
     data.setdefault("curves", {})
-    data.setdefault("presets", {})
+    data.setdefault("legacy", {})
+    for field in ("devices", "presets", "active_profile", "identities"):
+        data[field] = {}
+    for key, prof in profiles.read_all().items():
+        if prof.get("remembered"):
+            data["devices"][key] = prof["remembered"]
+        data["presets"][key] = prof.get("presets") or {}
+        data["active_profile"][key] = prof.get("active_profile") or {}
+        if prof.get("identity"):
+            data["identities"][key] = prof["identity"]
+    data["_snapshot"] = json.loads(json.dumps({k: _profile_fields(data, k) for k in profiles.read_all()}))
+    if any(data["legacy"].values()):
+        _adopt_legacy(data, list_devices())
     return data
+
+
+def _profile_fields(config, key):
+    return {
+        "identity": (config.get("identities") or {}).get(key),
+        "remembered": (config.get("devices") or {}).get(key),
+        "presets": (config.get("presets") or {}).get(key),
+        "active_profile": (config.get("active_profile") or {}).get(key),
+    }
+
+
+def _adopt_legacy(config, devices):
+    """Move legacy (node-name keyed) entries of mics present now to their key.
+    A mic not plugged in stays in `legacy` until it is seen."""
+    legacy = config["legacy"]
+    moved = False
+    for d in devices:
+        for field in ("devices", "presets", "active_profile"):
+            old = (legacy.get(field) or {}).pop(d.name, None)
+            if not old:
+                continue
+            moved = True
+            if field == "devices":
+                config["devices"].setdefault(d.key, old)
+            else:
+                merged = dict(old)
+                merged.update(config[field].get(d.key) or {})
+                config[field][d.key] = merged
+            config["identities"].setdefault(d.key, d.ident)
+    config["legacy"] = {f: v for f, v in legacy.items() if v}
+    if moved:
+        save_config(config)
+
+
+def note_identity(config, device):
+    """Record the device's identity alongside what is remembered about it."""
+    if device is not None:
+        config.setdefault("identities", {})[device.key] = device.ident
 
 
 def save_config(config):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DEVICES_FILE.write_text(json.dumps(config, indent=2) + "\n")
+    local = {"rev": CONFIG_REV, "curves": config.get("curves", {})}
+    if config.get("legacy"):
+        local["legacy"] = config["legacy"]
+    DEVICES_FILE.write_text(json.dumps(local, indent=2) + "\n")
+    # Write only the mics changed since load, so a profile file updated by a
+    # sync (or another process) for a different mic is never overwritten.
+    snapshot = config.setdefault("_snapshot", {})
+    keys = set(snapshot)
+    for field in ("devices", "presets", "active_profile"):
+        keys |= set(config.get(field) or {})
+    for key in keys:
+        fields = _profile_fields(config, key)
+        if fields != snapshot.get(key):
+            profiles.update(key, **fields)
+            snapshot[key] = json.loads(json.dumps(fields))
 
 
 def curve_cache_key(device, control):
@@ -765,10 +849,11 @@ def restore_saved(delay=0.0):
     if not saved:
         print("asr-mic-tuner: nothing saved")
         return 0
-    devices = {d.name: d for d in list_devices()}
+    devices = {d.key: d for d in list_devices()}
     applied = 0
-    for name, entry in saved.items():
-        device = devices.get(name)
+    for key, entry in saved.items():
+        device = devices.get(key)
+        name = device.name if device else key
         if device is None or not device.is_hardware:
             print(f"asr-mic-tuner: {name} not present, skipped")
             continue

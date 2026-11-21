@@ -3,7 +3,9 @@ profiles, recorded samples, and app settings.
 
 Layout (XDG):
 
-    ~/.config/asr-mic-tuner/devices.json     remembered gain, presets, curve cache (core.py)
+    ~/.config/asr-mic-tuner/profiles/*.json  one file per mic: identity, remembered gain,
+                                        profiles, chain bindings (profiles.py, v2.7)
+    ~/.config/asr-mic-tuner/devices.json     gain-curve probe cache, unmigrated legacy entries (core.py)
     ~/.config/asr-mic-tuner/settings.json    app settings, incl. the OpenRouter key
     ~/.local/share/asr-mic-tuner/history.db  SQLite: measurements, profiles
     ~/.local/share/asr-mic-tuner/samples/    recorded room tone and voice, FLAC (or WAV)
@@ -22,7 +24,7 @@ import wave
 from datetime import datetime
 from pathlib import Path
 
-from . import APP
+from . import APP, profiles
 from .core import CONFIG_DIR
 
 DATA_DIR = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / APP
@@ -101,6 +103,9 @@ def now_iso():
 # ---------------------------------------------------------------------------
 
 def load_settings():
+    """App settings. `chain_bindings[mic_key][port]` comes from the per-mic
+    profile files (profiles.py); `active_room_profile[mic_key]` stays here,
+    since room profiles are rows in this machine's history.db."""
     try:
         data = json.loads(SETTINGS_FILE.read_text())
     except (OSError, json.JSONDecodeError):
@@ -113,16 +118,62 @@ def load_settings():
         if merged.get("asr_autogain_max_db") == 15:
             merged["asr_autogain_max_db"] = 30
         merged["settings_rev"] = 26
+    if int(merged.get("settings_rev", 0)) < 27:
+        # v2.7: bindings were "<node name>:<port>" -> chain, room profiles by node name.
+        legacy = merged.setdefault("legacy", {})
+        flat = {}
+        for k, chain in (merged.get("chain_bindings") or {}).items():
+            name, _, port = k.partition(":")
+            flat.setdefault(name, {})[port] = chain
+        legacy["chain_bindings"] = flat
+        legacy["active_room_profile"] = dict(merged.get("active_room_profile") or {})
+        merged["active_room_profile"] = {}
+        merged["settings_rev"] = 27
+    merged["chain_bindings"] = {k: dict(p["chain_bindings"]) for k, p in profiles.read_all().items()
+                                if p.get("chain_bindings")}
+    merged["_bindings_snapshot"] = json.loads(json.dumps(merged["chain_bindings"]))
+    if any((merged.get("legacy") or {}).values()):
+        from .core import list_devices
+        _adopt_legacy_settings(merged, list_devices())
     return merged
+
+
+def _adopt_legacy_settings(settings, devices):
+    legacy = settings["legacy"]
+    moved = False
+    for d in devices:
+        old = (legacy.get("chain_bindings") or {}).pop(d.name, None)
+        if old:
+            merged = dict(old)
+            merged.update(settings["chain_bindings"].get(d.key) or {})
+            settings["chain_bindings"][d.key] = merged
+            moved = True
+        pid = (legacy.get("active_room_profile") or {}).pop(d.name, None)
+        if pid is not None:
+            settings["active_room_profile"].setdefault(d.key, pid)
+            moved = True
+    settings["legacy"] = {k: v for k, v in legacy.items() if v}
+    if moved:
+        save_settings(settings)
 
 
 def save_settings(settings):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(settings, indent=2) + "\n")
+    local = {k: v for k, v in settings.items() if k not in ("chain_bindings", "_bindings_snapshot")}
+    if not local.get("legacy"):
+        local.pop("legacy", None)
+    SETTINGS_FILE.write_text(json.dumps(local, indent=2) + "\n")
     try:
         SETTINGS_FILE.chmod(0o600)          # holds an API key
     except OSError:
         pass
+    # Chain bindings go to each mic's profile file; only mics whose bindings changed.
+    bindings = settings.get("chain_bindings") or {}
+    snapshot = settings.setdefault("_bindings_snapshot", {})
+    for key in set(bindings) | set(snapshot):
+        if bindings.get(key) != snapshot.get(key):
+            profiles.update(key, chain_bindings=bindings.get(key))
+            snapshot[key] = json.loads(json.dumps(bindings.get(key)))
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +187,18 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(SCHEMA)
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(measurements)")}
+        if "mic_key" not in cols:           # v2.7: identity that follows the mic
+            self.db.execute("ALTER TABLE measurements ADD COLUMN mic_key TEXT")
+            self.db.execute("ALTER TABLE profiles ADD COLUMN mic_key TEXT")
+        self.db.commit()
+
+    def backfill_keys(self, devices):
+        """Set mic_key on older rows recorded from a mic that is present now."""
+        for d in devices:
+            for table in ("measurements", "profiles"):
+                self.db.execute(f"UPDATE {table} SET mic_key = ? WHERE mic_key IS NULL AND device = ?",
+                                (d.key, d.name))
         self.db.commit()
 
     # -- measurements --
@@ -165,9 +228,12 @@ class Store:
         row = self.db.execute("SELECT * FROM measurements WHERE id = ?", (mid,)).fetchone()
         return _decode(row)
 
-    def measurements(self, device=None, kind=None, limit=500):
+    def measurements(self, device=None, kind=None, limit=500, mic_key=None):
         sql, args = "SELECT * FROM measurements WHERE 1=1", []
-        if device:
+        if mic_key:
+            sql += " AND (mic_key = ? OR (mic_key IS NULL AND device = ?))"
+            args += [mic_key, device or ""]
+        elif device:
             sql += " AND device = ?"
             args.append(device)
         if kind:
@@ -189,9 +255,9 @@ class Store:
     # -- profiles --
     def add_profile(self, kind, name, device, measurement_id, notes=""):
         cur = self.db.execute(
-            "INSERT INTO profiles (created, kind, name, device, measurement_id, notes) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (now_iso(), kind, name, device, measurement_id, notes),
+            "INSERT INTO profiles (created, kind, name, device, measurement_id, notes, mic_key) "
+            "VALUES (?, ?, ?, ?, ?, ?, (SELECT mic_key FROM measurements WHERE id = ?))",
+            (now_iso(), kind, name, device, measurement_id, notes, measurement_id),
         )
         self.db.commit()
         return cur.lastrowid

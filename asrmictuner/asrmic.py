@@ -131,7 +131,7 @@ def plan(settings):
     device = pick_device(settings)
     if device is None:
         return None, None, [], engine.INPUT_MIX[0]
-    name = (settings.get("chain_bindings") or {}).get(engine.binding_key(device.name, device.port))
+    name = engine.bound_chain(settings, device)
     effects, mix = [], engine.INPUT_MIX[0]
     if name and not settings.get("asr_mic_bypass"):
         try:

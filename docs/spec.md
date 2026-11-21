@@ -525,3 +525,12 @@ them. Gain recommendations aim speech peaks at −10 dBFS (`CALIB_TARGET_PEAK_DB
 −12). ASR auto gain: ceiling default +30 dB (was 15, migrated once via
 `settings_rev`), dead band ±3 dB around the target (was the −18…−10 band ±2), steps
 up to 6 dB when more than 8 dB off. Auto gain stays off by default.
+
+## v2.7 change (2026-11-21): mic identity and per-mic profile files
+
+Everything remembered about a microphone is keyed by a **mic key** that follows the
+physical mic (USB vendor:product:serial, Bluetooth address, or machine + controller +
+codec for a built-in mic), not by the PipeWire node name, and lives in one file per
+mic, `~/.config/asr-mic-tuner/profiles/<mic key>.json`. Older entries migrate when
+their mic is next present. Details, the confirmed property values and the open
+questions: [`mic-identity.md`](mic-identity.md).

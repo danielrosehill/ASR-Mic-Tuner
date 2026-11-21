@@ -578,22 +578,27 @@ class EffectsPage(QWidget):
 
     # -- bindings --
     def _bindings(self):
-        return dict(self.s.settings.get("chain_bindings") or {})
+        """[(mic_key, port, chain)] from `chain_bindings[mic_key][port]`."""
+        return sorted((key, port, chain)
+                      for key, ports in (self.s.settings.get("chain_bindings") or {}).items()
+                      for port, chain in ports.items())
 
     def _set_binding(self, device, name):
-        b = self._bindings()
-        b[engine.binding_key(device.name, device.port)] = name
-        self.s.settings["chain_bindings"] = b
+        engine.set_binding(self.s.settings, device, name)
         self.s.save_settings()
 
     def _fill_bindings(self):
         names = set(engine.chain_names())
-        labels = {d.name: d.description for d in self.s.devices}
-        rows = sorted(self._bindings().items())
+        labels = {d.key: d.description for d in self.s.devices}
+        idents = self.s.config.get("identities") or {}
+        rows = self._bindings()
         self.bind_table.setRowCount(len(rows))
-        for i, (key, chain) in enumerate(rows):
-            device, _, port = key.rpartition(":")
-            self.bind_table.setItem(i, 0, _item(labels.get(device, device), key))
+        for i, (key, port, chain) in enumerate(rows):
+            ident = idents.get(key) or {}
+            label = labels.get(key) or ident.get("product_name") or key
+            cell = _item(label, (key, port))
+            cell.setToolTip(key)
+            self.bind_table.setItem(i, 0, cell)
             self.bind_table.setItem(i, 1, _item(port))
             self.bind_table.setItem(i, 2, _item(chain if chain in names else f"{chain} (missing)"))
         self.bind_table.resizeColumnsToContents()
@@ -616,9 +621,13 @@ class EffectsPage(QWidget):
         row = self.bind_table.currentRow()
         if row < 0:
             return
-        key = self.bind_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-        b = self._bindings()
-        b.pop(key, None)
-        self.s.settings["chain_bindings"] = b
+        key, port = self.bind_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        b = self.s.settings.setdefault("chain_bindings", {})
+        ports = dict(b.get(key) or {})
+        ports.pop(port, None)
+        if ports:
+            b[key] = ports
+        else:
+            b.pop(key, None)
         self.s.save_settings()
         self._fill_bindings()
