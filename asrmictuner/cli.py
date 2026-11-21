@@ -93,8 +93,10 @@ def _measure(kind, seconds, device_name, location, notes):
     return 0
 
 
-def _tune(seconds, device_name, place, apply=True):
-    """Headless quick tune: listen, set the gain, save the profile (tune.py)."""
+def _tune(seconds, device_name, place, apply=True, clip=None):
+    """Headless quick tune: listen, set the gain, save the profile (tune.py).
+    With `clip` (a reference clip id, v3.0) the listen is the saved clip: the gain
+    is planned from the gain it was recorded at, so nobody has to talk again."""
     from datetime import datetime
     from . import analysis, store, tune
     from .capture import Analyser
@@ -105,6 +107,21 @@ def _tune(seconds, device_name, place, apply=True):
 
     devices = list_devices()
     by_name = {d.name: d for d in devices}
+    ref = None
+    if clip:
+        from . import mics
+        ref = mics.reference(clip)
+        if ref is None:
+            print(f"no such reference clip: {clip!r} (see --references)", file=sys.stderr)
+            return 1
+        live = next((d for d in devices if d.key == ref["mic_key"]), None)
+        if live is None:
+            print(f"the clip's mic ({ref['mic_key']}) is not connected, so its gain can't be set", file=sys.stderr)
+            return 1
+        if ref.get("gain_index") is None:
+            print("the clip has no recorded gain index", file=sys.stderr)
+            return 1
+        device_name = live.name
     name = device_name or default_source()
     if name in by_name and not by_name[name].is_hardware:
         name = resolve_hardware_for(name) or name
@@ -121,7 +138,20 @@ def _tune(seconds, device_name, place, apply=True):
         print("no analog gain control with a known curve on this device", file=sys.stderr)
         return 1
     passes, plan = [], None
-    for n, secs in ((1, seconds), (2, tune.VERIFY_SECONDS)):
+    if ref is not None:
+        audio, rate = mics.read_audio(ref["audio"])
+        metrics = analysis.analyse_voice(audio, rate)
+        before = fmt_gain(curve.db(ref["gain_index"]))
+        plan = tune.plan_gain(metrics, settings, curve, ref["gain_index"])
+        passes.append({"pass": 1, "clip": ref["id"], "gain_before": before, "plan": plan,
+                       "summary": tune.summary(metrics)})
+        print(tune.describe(plan, before), file=sys.stderr)
+        if not plan["ok"]:
+            print(json.dumps({"ok": False, "passes": passes}, indent=2))
+            return 2
+        if apply:
+            gain.set_index(plan["index"])
+    for n, secs in (() if ref is not None else ((1, seconds), (2, tune.VERIFY_SECONDS))):
         analyser = Analyser(dev.name, dev.channels, dev.rate)
         analyser.start()
         time.sleep(0.4)
@@ -145,7 +175,7 @@ def _tune(seconds, device_name, place, apply=True):
             break
     label = (place or settings.get("location") or "Default").strip()
     if apply:
-        entry = {"notes": "Quick tune", "created": datetime.now().astimezone().isoformat(timespec="seconds"),
+        entry = {"notes": f"Quick tune from reference clip {ref['id']}" if ref else "Quick tune", "created": datetime.now().astimezone().isoformat(timespec="seconds"),
                  "index": gain.index, "db": curve.db(gain.index), "control": gain.name, "port": dev.port,
                  "place": label, "computer": machine_label(this_machine()),
                  "noise_reduction": settings.get("noise_reduction", "off"),
@@ -159,6 +189,143 @@ def _tune(seconds, device_name, place, apply=True):
         save_config(config)
     print(json.dumps({"ok": True, "device": dev.name, "port": dev.port, "profile": label if apply else None,
                       "gain_db": curve.db(gain.index), "passes": passes}, indent=2))
+    return 0
+
+
+# -- mic catalogue, benchmarks, reference clips (v3.0, mics.py, docs/mics.md) --
+
+def _pick_device(spec):
+    """A Device by node name, mic key or unique key prefix; default: the
+    system default input (resolved to its hardware mic)."""
+    from .core import default_source, list_devices, resolve_hardware_for
+    devices = list_devices()
+    if spec:
+        hits = ([d for d in devices if spec in (d.name, d.key)]
+                or [d for d in devices if d.key.startswith(spec) or spec.lower() in d.description.lower()])
+        return hits[0] if len(hits) == 1 else None
+    name = default_source()
+    by_name = {d.name: d for d in devices}
+    if name in by_name and not by_name[name].is_hardware:
+        name = resolve_hardware_for(name) or name
+    return by_name.get(name) or next((d for d in devices if d.is_hardware), None)
+
+
+def _known_key(spec):
+    """A remembered mic's key (connected or not) by key, unique key prefix or name."""
+    from . import mics
+    if not spec:
+        return None
+    cat = mics.catalogue()
+    hits = ([m for m in cat if m["mic_key"] == spec]
+            or [m for m in cat if m["mic_key"].startswith(spec) or spec.lower() in m["name"].lower()])
+    return hits[0]["mic_key"] if len(hits) == 1 else None
+
+
+def _gain_state(dev):
+    from .core import pick_gain_control, read_controls
+    gain = pick_gain_control(read_controls(dev.card)) if dev.is_hardware else None
+    return {"gain_control": gain.name if gain else None, "gain_index": gain.index if gain else None,
+            "gain_db": gain.db if gain else None, "soft_percent": dev.pw_percent}
+
+
+def _annotate(spec, fields):
+    from . import mics
+    from .identity import filename
+    from .profiles import is_mic_key
+    dev = _pick_device(spec)
+    key = dev.key if dev else _known_key(spec)
+    if not key or not is_mic_key(key):
+        print(f"no such microphone: {spec!r} (see --mics)", file=sys.stderr)
+        return 1
+    try:
+        about = mics.set_about(key, ident=dev.ident if dev else None,
+                               **{k: v for k, v in fields.items() if v is not None})
+    except (KeyError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps({"mic_key": key, "about": about, "file": f"profiles/{filename(key)}.json"}, indent=2))
+    return 0
+
+
+def _benchmark(spec, seconds, clip, place, name, notes):
+    """Score a mic for ASR from a fresh recording (kept as a reference clip) or a saved clip."""
+    from . import analysis, mics, store
+    from .core import list_devices
+    settings = store.load_settings()
+    place = (place or settings.get("location") or "").strip()
+    if clip:
+        ref = mics.reference(clip)
+        if ref is None and not __import__("os").path.exists(clip):
+            print(f"no such reference clip: {clip!r} (see --references)", file=sys.stderr)
+            return 1
+        path = ref["audio"] if ref else clip
+        audio, rate = mics.read_audio(path)
+        key = ref["mic_key"] if ref else None
+        dev = next((d for d in list_devices() if d.key == key), None) if key else _pick_device(spec)
+        key = key or (dev.key if dev else None)
+        state = {k: ref.get(k) for k in ("gain_control", "gain_index", "gain_db", "soft_percent")} if ref else {}
+        port = ref.get("port") if ref else None
+        place = place or (ref or {}).get("place", "")
+        source = {"reference": ref["id"] if ref else None, "audio": path, "recorded_now": False}
+    else:
+        from .capture import Analyser
+        dev = _pick_device(spec)
+        if dev is None:
+            print("no capture device", file=sys.stderr)
+            return 1
+        key, port, state = dev.key, dev.port, _gain_state(dev)
+        analyser = Analyser(dev.name, dev.channels, dev.rate)
+        analyser.start()
+        time.sleep(0.4)
+        analyser.begin_record()
+        print(f"Benchmark: talk normally for {seconds:g} s on {dev.description}…", file=sys.stderr, flush=True)
+        time.sleep(seconds)
+        audio = analyser.end_record()
+        analyser.stop()
+        rate = dev.rate
+        if len(audio) < rate * 5:
+            print(analyser.error or "too little audio captured", file=sys.stderr)
+            return 1
+        tmp = store.save_sample(audio, rate, "reference", dev.name)
+        ref = mics.add_reference(tmp, key, device_label=dev.description, port=port, rate=rate,
+                                 channels=audio.shape[1], seconds=round(len(audio) / rate, 2), place=place,
+                                 name=name, notes=notes, move=True, **state)
+        source = {"reference": ref["id"], "audio": ref["audio"], "recorded_now": True}
+    room = None
+    if key:
+        pid = settings.get("active_room_profile", {}).get(key)
+        prof = store.Store().profile(pid) if pid else None
+        room = prof.get("metrics") if prof else None
+    metrics = analysis.analyse_voice(audio, rate, room=room)
+    card = mics.scorecard(metrics, rate, audio.shape[1])
+    entry = None
+    if key:
+        entry = mics.record_benchmark(key, card, place=place, port=port, gain_db=state.get("gain_db"),
+                                      soft_percent=state.get("soft_percent"), reference_id=source["reference"],
+                                      ident=dev.ident if dev else None)
+    if source["recorded_now"]:
+        store.Store().add_measurement(
+            kind="voice", device=dev.name, mic_key=key, device_label=dev.description,
+            gain_control=state["gain_control"], gain_index=state["gain_index"], gain_db=state["gain_db"],
+            soft_percent=state["soft_percent"], location=place, notes=notes or "Benchmark",
+            duration_s=len(audio) / rate, metrics=metrics, sample_path=source["audio"])
+    print(json.dumps({"mic_key": key, "name": mics.display_name(key) if key else None, "place": place,
+                      "gain": state, "source": source, "scorecard": card, "logged": entry}, indent=2, default=str))
+    return 0
+
+
+def _add_reference(path, spec, place, name, notes):
+    import os
+    from . import mics
+    dev = _pick_device(spec)
+    if dev is None or not os.path.exists(path):
+        print("need an existing audio file and a connected --device (gain is read from it now)", file=sys.stderr)
+        return 1
+    audio, rate = mics.read_audio(path)
+    ref = mics.add_reference(path, dev.key, device_label=dev.description, port=dev.port, rate=rate,
+                             channels=audio.shape[1], seconds=round(len(audio) / rate, 2), place=place,
+                             name=name, notes=notes, **_gain_state(dev))
+    print(json.dumps(ref, indent=2))
     return 0
 
 
@@ -186,6 +353,27 @@ def main(argv=None):
     parser.add_argument("--device", help="source name for --measure (default: first hardware device)")
     parser.add_argument("--location", help="location tag for --measure")
     parser.add_argument("--notes", help="notes for --measure")
+    mic = parser.add_argument_group("microphone catalogue (v3.0, docs/mics.md)")
+    mic.add_argument("--mics", action="store_true",
+                     help="list every known mic (connected or remembered) with its notes, benchmarks and clips")
+    mic.add_argument("--annotate", action="store_true",
+                     help="save human notes for --device (node name, mic key or key prefix; default: the "
+                          "default input) from --maker/--model/--type/--connection/--mic-notes; '' clears one")
+    mic.add_argument("--maker")
+    mic.add_argument("--model")
+    mic.add_argument("--type", dest="mic_type", help="headset, earbuds, usb-desk, lavalier, studio-condenser, "
+                     "studio-dynamic, shotgun, conference, webcam, laptop-internal, other")
+    mic.add_argument("--connection", help="usb-c, usb-a, bluetooth, wireless-dongle, 3.5mm, xlr, internal, other")
+    mic.add_argument("--mic-notes")
+    mic.add_argument("--benchmark", action="store_true",
+                     help="score --device for ASR: record --seconds (default 30), keep it as a reference clip, "
+                          "log it; or re-score a saved clip with --clip. Prints JSON")
+    mic.add_argument("--clip", help="with --benchmark or --tune: a reference clip id (or prefix) or an audio file path")
+    mic.add_argument("--name", help="name for the reference clip --benchmark records")
+    mic.add_argument("--references", action="store_true", help="list reference clips (JSON); --device filters")
+    mic.add_argument("--add-reference", metavar="AUDIO",
+                     help="file an existing recording as a reference clip of --device (records its gain now)")
+    mic.add_argument("--delete-reference", metavar="ID")
     parser.add_argument("--sync", action="store_true",
                         help="sync profiles and chains with the profile folder (Settings → Profile sync), "
                              "print a JSON report, and exit")
@@ -222,7 +410,47 @@ def main(argv=None):
     if args.measure:
         return _measure(args.measure, args.seconds or 15.0, args.device, args.location, args.notes)
     if args.tune:
-        return _tune(args.seconds or 30.0, args.device, args.place, apply=not args.dry_run)
+        return _tune(args.seconds or 30.0, args.device, args.place, apply=not args.dry_run, clip=args.clip)
+    if args.mics:
+        from . import mics
+        data = mics.catalogue()
+        if args.json:
+            print(json.dumps(data, indent=2))
+        else:
+            for m in data:
+                flags = ("connected" if m["connected"] else "not connected") + (", default" if m["system_default"] else "")
+                b = m["latest_benchmark"]
+                print(f"{m['name']}  [{m['about'].get('type') or '?'}, {m['about'].get('connection') or '?'}]  ({flags})")
+                print(f"  key {m['mic_key']}")
+                if b:
+                    print(f"  last benchmark {b['at'][:16]}: {b['score']} ({b['grade']}), SNR {b['snr_db']} dB")
+                print(f"  {m['benchmarks']} benchmarks, {m['reference_clips']} reference clips")
+        return 0
+    if args.annotate:
+        return _annotate(args.device, {"maker": args.maker, "model": args.model, "type": args.mic_type,
+                                       "connection": args.connection, "notes": args.mic_notes})
+    if args.benchmark:
+        return _benchmark(args.device, args.seconds or 30.0, args.clip, args.place, args.name, args.notes)
+    if args.references:
+        from . import mics
+        dev = _pick_device(args.device) if args.device else None
+        key = dev.key if dev else _known_key(args.device)
+        if args.device and not key:
+            print(f"no such microphone: {args.device!r} (see --mics)", file=sys.stderr)
+            return 1
+        print(json.dumps(mics.references(key), indent=2))
+        return 0
+    if args.add_reference:
+        return _add_reference(args.add_reference, args.device, args.place, args.name, args.notes)
+    if args.delete_reference:
+        from . import mics
+        ref = mics.reference(args.delete_reference)
+        if ref is None:
+            print("no such reference clip", file=sys.stderr)
+            return 1
+        mics.delete_reference(ref)
+        print(json.dumps({"deleted": ref["id"]}))
+        return 0
     if args.sync:
         from . import store, sync
         report = sync.sync(store.load_settings())

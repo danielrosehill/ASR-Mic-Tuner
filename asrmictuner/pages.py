@@ -229,6 +229,8 @@ class ProfilesPage(QWidget):
         super().__init__(parent)
         self.s = session
         root = QVBoxLayout(self)
+        from .micpage import AboutBox, ReferencesBox
+        root.addWidget(AboutBox(session))
 
         presets = QGroupBox(f"Profiles for this microphone on {machine_label(this_machine())} (one per place)")
         pl = QVBoxLayout(presets)
@@ -249,6 +251,7 @@ class ProfilesPage(QWidget):
         self.remembered = wrap_label()
         pl.addWidget(self.remembered)
         root.addWidget(presets)
+        root.addWidget(ReferencesBox(session))
 
         rooms = QGroupBox("Room noise profiles")
         rl = QVBoxLayout(rooms)

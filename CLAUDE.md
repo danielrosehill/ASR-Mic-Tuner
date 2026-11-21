@@ -13,6 +13,9 @@ In scope:
   gain changes, with a one-click apply that is remembered **per microphone**.
 - Quick tune (`tune.py`): listen ~30 s, set the gain, save a profile per mic, port and
   place, applied again when that mic becomes the default (`docs/quick-tune.md`).
+- Benchmarking a mic for ASR, human notes about it (maker, model, type, connection) and
+  reference clips to re-analyse or tune from (`mics.py`, `docs/mics.md`). Agent skills
+  in `skills/` drive the CLI.
 - Watching levels while another app dictates (quiet-mic alert, `watch.py`).
 - Input-side processing chains run by our own engine inside PipeWire (ASR Effects
   tab, `engine.py`, `fxpage.py`), bound per microphone and port, published as the
@@ -43,6 +46,7 @@ reads it.
 (every effect, its backend and test results), `docs/asr-mic.md` (the ASR Mic source),
 `docs/analysis.md` (every metric and threshold), `docs/mic-identity.md` (the mic key and
 per-mic profile files: everything remembered is keyed by `Device.key`, never the node name),
+`docs/mics.md` (human notes per mic, ASR benchmarks, reference clips; `mics.py`),
 `docs/profiles.md` (profile sync to a folder or private Git repo, `sync.py`).
 
 ## Planning

@@ -29,6 +29,7 @@ class Session(QObject):
     history_changed = pyqtSignal()
     profiles_changed = pyqtSignal()
     settings_changed = pyqtSignal()
+    mics_changed = pyqtSignal()          # v3.0: a mic's notes, benchmarks or reference clips
     status = pyqtSignal(str)
     open_chain = pyqtSignal(object, str, object)   # chain, preset name, notes: open in ASR Effects
 

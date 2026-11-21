@@ -75,7 +75,8 @@ def _files(base):
 def _merge_profile(rel, a, b):
     """Merge two edited copies of one mic's profile file (format 2): the folder's
     copy, with this computer's buckets taken from the local copy; shared fields
-    (identity, chain_bindings) from whichever is newer. None if not mergeable."""
+    (identity, chain_bindings, about) from whichever is newer; benchmarks
+    from both. None if not mergeable."""
     from .identity import this_machine
     from .profiles import FORMAT, PER_MACHINE
     if not rel.startswith("profiles/"):
@@ -99,11 +100,21 @@ def _merge_profile(rel, a, b):
             bucket.pop(me, None)
         out[f] = bucket
     newer = mine if _when(a) >= _when(b) else theirs
-    for f in ("identity", "chain_bindings"):
+    for f in ("identity", "chain_bindings", "about"):
         if newer.get(f) is not None:
             out[f] = newer[f]
         else:
             out.pop(f, None)
+    # Benchmarks (v3.0) are a log: keep both sides' entries, oldest first.
+    seen, bench = set(), []
+    for e in sorted((mine.get("benchmarks") or []) + (theirs.get("benchmarks") or []), key=lambda e: e.get("at", "")):
+        tag = (e.get("at"), e.get("computer_id"))
+        if tag not in seen:
+            seen.add(tag)
+            bench.append(e)
+    if bench:
+        from .mics import BENCH_KEEP
+        out["benchmarks"] = bench[-BENCH_KEEP:]
     out["updated"] = max(mine.get("updated", ""), theirs.get("updated", ""))
     return json.dumps(out, indent=2, sort_keys=True) + "\n"
 

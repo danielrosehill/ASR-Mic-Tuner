@@ -177,7 +177,12 @@ class MeasurePage(QWidget):
                                      "your lowest pitch, gate and auto gain set from your levels. Opens in ASR "
                                      "Effects for review.")
         self.chain_button.clicked.connect(self._personal_chain)
-        for b in (self.profile_button, self.apply_button, self.chain_button, self.play_button, self.ai_button):
+        self.reference_button = QPushButton("Keep as reference clip")
+        self.reference_button.setToolTip("Keep this recording with the mic (Profiles → Reference clips), so it "
+                                         "can be benchmarked or tuned from later without speaking again")
+        self.reference_button.clicked.connect(self._keep_reference)
+        for b in (self.profile_button, self.apply_button, self.chain_button, self.reference_button,
+                  self.play_button, self.ai_button):
             brow.addWidget(b)
         brow.addStretch(1)
         grid.addLayout(brow, 6, 0, 1, 2)
@@ -353,6 +358,13 @@ class MeasurePage(QWidget):
         self.state.setText(f"Saved to History · <small>{esc(path)}</small>")
         self.show_measurement(self.s.store.measurement(mid))
 
+    def _keep_reference(self):
+        from .micpage import keep_as_reference
+        if not self.current:
+            return
+        ref = keep_as_reference(self.s, self.current)
+        self.s.status.emit(f"Kept as reference clip {ref['id']}." if ref else "This measurement has no sample file.")
+
     def _cancel(self, message):
         if self.s.analyser:
             self.s.analyser.end_record()
@@ -418,6 +430,7 @@ class MeasurePage(QWidget):
         self.apply_button.setVisible(self._suggestion is not None)
         self.profile_button.setText("Save as room profile…" if kind == "room" else "Save as speaker profile…")
         self.chain_button.setVisible(kind == "voice")
+        self.reference_button.setVisible(kind == "voice")
         if m.get("ai"):
             self.ai_view.setHtml(ai_html(m["ai"]))
             self.ai_view.show()

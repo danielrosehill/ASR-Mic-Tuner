@@ -8,6 +8,8 @@
      "presets": {"<place>": {"index": ..., "db": ..., "port": ..., "noise_reduction": ..., "tuned": {...}}},
      "active_profile": {"<port description>": "<place>"},
      "chain_bindings": {"<port description>": "<chain name>"},
+     "about": {"maker": ..., "model": ..., "type": ..., "connection": ..., "notes": ...},   # v3.0
+     "benchmarks": [{"at": ..., "computer": ..., "place": ..., "score": ..., ...}],       # v3.0
      "updated": "<ISO time>"}
 
 One file per mic, so syncing the folder (planning/sprints.md, sprint 2) never
@@ -24,7 +26,8 @@ from datetime import datetime, timezone
 
 from .identity import filename
 
-FIELDS = ("identity", "remembered", "presets", "active_profile", "chain_bindings", "machines", "format")
+FIELDS = ("identity", "remembered", "presets", "active_profile", "chain_bindings", "machines", "format",
+          "about", "benchmarks")       # about, benchmarks: v3.0, mics.py (docs/mics.md)
 PER_MACHINE = ("remembered", "presets", "active_profile")
 FORMAT = 2      # v2.9: remembered / presets / active_profile are {machine id: ...}
 

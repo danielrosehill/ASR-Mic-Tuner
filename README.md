@@ -49,7 +49,7 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 | **Monitor** | The analog gain in dB, colour-zoned by the device's own curve, with − / + buttons that move one hardware step (0.75 dB on HDA). Per-channel meters with peak hold and the −18…−10 dBFS target band, and a live verdict ("too loud — needs −6 dB", with a **Fix it** button). It also counts clipped samples and runs, shows DC offset, channel balance and an estimated speech-to-noise ratio, and has a live spectrum with the active room profile overlaid. Calibration comes in three lengths, Quick, Standard and Thorough (3+8 s, 5+15 s, 10+30 s), and **Log reading** saves the current state to History. |
 | **Measure** | **Mic test**: choose a text to read aloud (30 s, 1 min, 2 min or 3 min, several of each), read it at your normal dictation distance, and press *Done reading*. The result is an ASR readiness score, the problems that would hurt recognition (level, clipping, SNR, narrow bandwidth, rumble, plosives, sibilance, channel imbalance, **dropouts** from a gate or VAD muting speech, and **level spread and drift** over longer reads), and a one-click **Apply recommended gain**, which sets the gain and remembers it for that microphone. **Save as speaker profile** keeps the test as yours on that mic. **Build personal chain** turns it into an ASR Mic chain fitted to your voice: a high-pass 30% under your lowest pitch, a low-pass at 8 kHz (what 16 kHz recognisers keep anyway), a gentle gate set between your room and your speech (only when the SNR allows), auto gain that ignores the room, and a limiter. It adds a hum notch if your room profile found mains hum, uses plain DSP with no neural denoiser, opens in ASR Effects for review, and explains each choice. A "This microphone" panel shows that mic's last test, its remembered gain and its bound ASR chain. **Room tone** (5–120 s): noise floor (p10, RMS, A-weighted), stationarity, transients, rumble, speech-band and hiss energy, mains hum (50/60 Hz plus harmonics), spectral flatness, 1/3-octave bands, and a sox noise profile for later cleanup. The mic test measures speech peak and RMS, SNR against the active room profile, crest factor, dynamic range, pitch (F0) median and range, spectral centroid and tilt, bandwidth (it catches Bluetooth HFP narrowband), rumble, presence, sibilance, plosive pops and channel imbalance. All of that feeds an **ASR readiness score** from 0 to 100 with named deductions, plus a suggested gain. |
 | **History** | Every measurement, with device, gain, location, notes, sample file and AI review. Filter by device or kind, play a sample, ask the AI, promote a measurement to a profile, or export everything as JSON. |
-| **Profiles** | **Gain presets** per microphone ("office", "living room"); the ★ preset is the remembered gain that Restore, the tray and the login unit reapply. **Room noise profiles**: the active one per device is the SNR reference and the spectrum overlay, and each has a "copy sox cleanup command" action. **Voice profiles** as well. |
+| **Profiles** | **About this microphone** (v3.0): maker, model, type (headset, USB desk mic, lavalier…) and connection (USB-C, Bluetooth…) plus free notes, kept with the mic and synced, for when the USB descriptor names the chipset rather than the brand; also its latest ASR benchmark. **Reference clips**: saved recordings of the mic to play, re-benchmark or tune from without speaking again ([`docs/mics.md`](docs/mics.md)). **Gain presets** per microphone ("office", "living room"); the ★ preset is the remembered gain that Restore, the tray and the login unit reapply. **Room noise profiles**: the active one per device is the SNR reference and the spectrum overlay, and each has a "copy sox cleanup command" action. **Voice profiles** as well. |
 | **ASR Effects** | Input chains for dictation, run **inside PipeWire** by ASR Mic Tuner itself, and published as **ASR Mic**, a separate mono input. The raw mic stays the default and untouched ([`docs/asr-mic.md`](docs/asr-mic.md)). **Quick setup** is one button: pick a chain and it is saved, bound to this microphone, and ASR Mic is turned on. Templates: "Dictation standard" and "Noisy room" (DeepFilterNet, for desktop CPUs), a "low CPU" RNNoise version of each for laptops, "Simple clean-up" (nothing to download), "Level only" and "None". Under *Customise the chain*: high-pass, low-pass, hum notch, EQ band, gate, loudness auto gain (30 s, gated), compressor, limiter, RNNoise, DeepFilterNet, and an optional **voice activity gate** marked with a caution. A **Noise reduction** switch (Off / Light, RNNoise / Strong, DeepFilterNet), also in the tray menu, lays a denoiser over the bound chain for loud moments (a crying baby) and replaces any denoiser already in it. **Bypass** gives you A/B, **Pause** turns it off for a call, and each mic and port keeps its own chain. The neural denoisers are optional downloads from their maintainers' releases, checked against pinned checksums. Details: [`docs/effects.md`](docs/effects.md). |
 | **Settings** | OpenRouter key and model, an option to send the audio as well as the numbers, tray behaviour, start at login, the quiet-mic alert, auto-restore on drift, and the data folder. |
 
@@ -124,20 +124,36 @@ asr-mic-tuner --measure room --seconds 15 --location "living room"   # records, 
 asr-mic-tuner --measure voice --seconds 20
 asr-mic-tuner --tune --place "Home office"    # quick tune: talk 30 s, gain set and saved as a profile; JSON
 asr-mic-tuner --tune --dry-run                # measure and plan only, change nothing
+asr-mic-tuner --tune --clip <id> --place "Home office"   # tune from a saved reference clip: nobody talks
+asr-mic-tuner --mics [--json]                 # every known mic: notes, connected, latest benchmark, clips
+asr-mic-tuner --annotate --device <mic> --maker Acer --model OHW325 --type headset --connection usb-c
+asr-mic-tuner --benchmark --device <mic>      # talk 30 s: ASR scorecard, kept as a reference clip; JSON
+asr-mic-tuner --benchmark --clip <id>         # re-score a saved clip
+asr-mic-tuner --references [--device <mic>]   # list reference clips; --add-reference FILE, --delete-reference ID
 asr-mic-tuner --history [--json]              # the measurement log
 asr-mic-tuner --restore [--delay 8]           # reapply remembered gain (used by the login unit)
 asr-mic-tuner --asr-mic                       # run ASR Mic's chain (used by its user unit)
 ```
 
+`--device` takes a node name, a mic key, a unique key prefix or part of the mic's name.
+
+**Agent skills** (v3.0): [`skills/tune-microphone`](skills/tune-microphone/SKILL.md) and
+[`skills/benchmark-microphone`](skills/benchmark-microphone/SKILL.md) let a coding agent
+(Claude Code or similar) identify a mic, record its notes, take one 30 s reference clip,
+benchmark it, and set and save its gain profile, all through the CLI above. Copy or
+symlink a folder into your agent's skills directory (for Claude Code,
+`~/.claude/skills/`).
+
 ## Files
 
 | Path | Contents |
 |---|---|
-| `~/.config/asr-mic-tuner/profiles/<mic key>.json` | one file per microphone (v2.7, `docs/mic-identity.md`): its identity (vendor/product ID, serial, codec, machine), remembered gain, profiles (`presets`, with `port`, `noise_reduction`, `tuned`), the active profile per port (`active_profile`) and the chain bound per port (`chain_bindings`) |
+| `~/.config/asr-mic-tuner/profiles/<mic key>.json` | one file per microphone (v2.7, `docs/mic-identity.md`): its identity (vendor/product ID, serial, codec, machine), remembered gain, profiles (`presets`, with `port`, `noise_reduction`, `tuned`), the active profile per port (`active_profile`) and the chain bound per port (`chain_bindings`), and since v3.0 the human notes (`about`) and benchmark log (`benchmarks`) |
 | profile folder (Settings → Profile sync) | optional copy of `profiles/` and `chains/`, synced or pushed to a private Git repo (`docs/profiles.md`); state in `~/.config/asr-mic-tuner/sync-state.json` |
 | `~/.config/asr-mic-tuner/devices.json` | probed-curve cache, and pre-v2.7 entries for mics not seen since the upgrade (`legacy`) |
 | `~/.config/asr-mic-tuner/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
 | `~/.local/share/asr-mic-tuner/history.db` | SQLite: `measurements`, `profiles` |
+| `~/.local/share/asr-mic-tuner/references/<mic>/` | reference clips (v3.0): `<id>.flac` plus `<id>.json` with the gain, port and place it was recorded at; this computer only |
 | `~/.local/share/asr-mic-tuner/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
 | `~/.config/systemd/user/asr-mic-tuner-asr-mic.service` | ASR Mic (only when you turn it on) |
 | `~/.config/autostart/asr-mic-tuner.desktop` | start in the tray at login (Settings or tray menu) |
@@ -158,6 +174,7 @@ python3 -m asrmictuner       # run from the source tree
 - [`docs/spec.md`](docs/spec.md): design, constraints, acceptance criteria
 - [`docs/quick-tune.md`](docs/quick-tune.md): quick tune, profiles per mic and place, following the default mic, and why the old auto gain left the internal mic too low
 - [`docs/gain-mapping.md`](docs/gain-mapping.md): the measured pactl ↔ ALSA mapping
+- [`docs/mics.md`](docs/mics.md): mic notes (maker, model, type, connection), ASR benchmarks, reference clips, and the agent skills
 - [`docs/analysis.md`](docs/analysis.md): what every metric means and the thresholds behind the findings and score
 - [`docs/kde-integration.md`](docs/kde-integration.md): tray, pop-up placement on Wayland, and the microphone-in-use indicator
 - [`docs/asr-mic.md`](docs/asr-mic.md): the ASR Mic virtual source, why the raw mic stays the default, and the VAD caution

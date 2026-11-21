@@ -37,7 +37,15 @@ after its card profile changes from `analog-stereo` to `mono-fallback`.
 Added on request: a profile is a mic, on a computer, in a place. Per-computer buckets in
 each mic file, merge on sync. See `docs/mic-identity.md`.
 
-## Sprint 3: ASR Mic gain and format (target v3.0)
+## Sprint 2c: mic catalogue, benchmarks, reference clips, agent skills (v3.0, shipped 2026-11-21)
+
+- [x] Human notes per mic (maker, model, type, connection, notes), shared and synced; GUI and `--annotate`.
+- [x] `--benchmark`: ASR scorecard, logged per mic with computer and place.
+- [x] Reference clips: recorded once, then re-scored or tuned from (`--tune --clip`) without speaking again.
+- [x] Agent skills `skills/tune-microphone`, `skills/benchmark-microphone`.
+- [ ] Bandwidth metric saturates at Nyquist on real mics (docs/mics.md); a fidelity measure would need another rule.
+
+## Sprint 3: ASR Mic gain and format (target v3.1)
 
 - [ ] Fixed ASR Mic gain stage per binding, saved in the profile; slider in ASR Effects.
 - [ ] Quick tune sets hardware gain (peaks) then ASR Mic gain (speech loudness).
@@ -46,14 +54,14 @@ each mic file, merge on sync. See `docs/mic-identity.md`.
 
 Done when: raising ASR Mic gain changes what the dictation app hears and nothing else.
 
-## Sprint 4: accuracy harness (target v3.1)
+## Sprint 4: accuracy harness (target v3.2)
 
-- [ ] Record a passage raw; render candidate chains offline; transcribe off-laptop; score WER.
+- [ ] Record a passage raw (reference clips, v3.0, are the raw input); render candidate chains offline; transcribe off-laptop; score WER.
 - [ ] Cost estimate and approval before any run beyond a pilot.
 - [ ] Results per mic in the Measure tab; evidence written into `docs/effects.md`.
 - [ ] Use it to settle: does level matter to Whisper, does 16 kHz matter, does each denoiser help.
 
-## Sprint 5: new effects, chosen by the harness (target v3.2)
+## Sprint 5: new effects, chosen by the harness (target v3.3)
 
 - [ ] Echo cancellation via PipeWire's WebRTC module.
 - [ ] Dereverberation, if Sprint 4 research finds a backend that fits the rules in `CLAUDE.md`.
