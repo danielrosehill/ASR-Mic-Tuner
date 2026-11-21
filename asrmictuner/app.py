@@ -35,6 +35,10 @@ class Controller:
         self.watch.alert.connect(self.notify)
         from .tune import QuickTune
         self.tune = QuickTune(self.session)
+        from .syncui import SyncRunner
+        self.sync = SyncRunner(self.session)
+        self.session.sync_runner = self.sync
+        self.sync.finished.connect(self._sync_done)
         # Window first, so its pages are connected before the first
         # device_changed fires.
         self.window = MainWindow(self.session, self)
@@ -77,6 +81,12 @@ class Controller:
             self.window._fill_combo()
         if text:
             self.notify("Microphone changed", text, warn=False)
+
+    def _sync_done(self, report):
+        # Only failures and conflicts are worth a notification; the Settings tab shows the rest.
+        from .syncui import describe
+        if report.get("error") or report.get("conflicts"):
+            self.notify("Profile sync", describe(report))
 
     def notify(self, title, body, warn=True):
         """Through the tray icon when there is one, else notify-send."""

@@ -15,20 +15,22 @@ Order matters: identity first, because profiles, sync and the harness all key on
 - [x] Per-mic profile files under `~/.config/asr-mic-tuner/profiles/<mic_key>.json`.
 - [x] Tested with the internal mic (`docs/mic-identity.md`).
 - [ ] Test with one USB mic and one Bluetooth headset; record the real property values
-      in `docs/mic-identity.md` (USB serial and BT address are still assumed).
+      in `docs/mic-identity.md`. USB done 2026-11-21 (Boya BY-CM1, Samson Q2U); Bluetooth still assumed.
 
 Done when (not yet verified: needs a USB mic): a USB mic's profile is found after replugging it into a different port and
 after its card profile changes from `analog-stereo` to `mono-fallback`.
 
-## Sprint 2: profile sync through a private Git repo (target v2.8)
+## Sprint 2: profile sync through a private Git repo (v2.8, shipped 2026-11-21)
 
-- [ ] Settings: `profile_repo` path; "Use a Git repo for profiles" in the app.
-- [ ] Commit on save, pull on start, push in the background; failures go to the tray only.
-- [ ] Refuse or warn on a public repo (checked with `gh` when available).
-- [ ] Docs: `docs/profiles.md` (format, what syncs, what stays local).
-
-Done when: a mic tuned on machine A gets its gain applied automatically when plugged
-into machine B.
+- [x] Settings: `sync_folder`, `sync_git`, `sync_auto`; Settings → Profile sync (any folder, or a Git clone).
+- [x] "Create a private GitHub repo…" (via `gh`), then sync.
+- [x] Pull, three-way merge per file, commit, push; at start, after changes, hourly, Sync now;
+      failures and conflicts go to the tray only.
+- [x] Refuses to sync to a public GitHub repo.
+- [x] Docs: `docs/profiles.md`.
+- [x] Done when: the laptop and the desktop share profiles through one private repo
+      (2026-11-21, see `docs/profiles.md` → Tested).
+- [ ] A USB mic tuned on one machine applied automatically on the other: needs the mic moved.
 
 ## Sprint 3: ASR Mic gain and format (target v2.9)
 

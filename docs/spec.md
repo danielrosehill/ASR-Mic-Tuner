@@ -534,3 +534,11 @@ codec for a built-in mic), not by the PipeWire node name, and lives in one file 
 mic, `~/.config/asr-mic-tuner/profiles/<mic key>.json`. Older entries migrate when
 their mic is next present. Details, the confirmed property values and the open
 questions: [`mic-identity.md`](mic-identity.md).
+
+## v2.8 change (2026-11-21): profile sync
+
+Settings → Profile sync mirrors `profiles/` and `chains/` to a folder, optionally a clone
+of a private Git repository that the app pulls, commits and pushes (it can create one with
+`gh`). Three-way per file, newer wins on a true conflict, and the other copy is kept. Off
+until a folder is chosen. `asr-mic-tuner --sync` runs it headless. Details:
+[`profiles.md`](profiles.md).

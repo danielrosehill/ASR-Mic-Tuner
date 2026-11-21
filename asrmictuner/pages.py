@@ -537,6 +537,8 @@ class SettingsPage(QWidget):
         self.s.settings_changed.connect(self._sync_switches)
         root.addWidget(quietbox)
 
+        root.addWidget(self._sync_box(st))
+
         databox = QGroupBox("Data")
         dl = QVBoxLayout(databox)
         dl.addWidget(wrap_label(
@@ -555,6 +557,91 @@ class SettingsPage(QWidget):
     def _set(self, key, value):
         self.s.settings[key] = value
         self.s.save_settings()
+
+    # -- profile sync (v2.8, sync.py) --
+    def _sync_box(self, st):
+        box = QGroupBox("Profile sync")
+        form = QFormLayout(box)
+        form.addRow(wrap_label(
+            "<small>Keep your microphone profiles and chains in a folder of your choice, so other "
+            "machines can use them. Any synced folder works. For GitHub, the folder is a clone of a "
+            "<b>private</b> repository, and the app commits and pushes for you.</small>"))
+        row = QHBoxLayout()
+        self.sync_folder = QLineEdit(st.get("sync_folder", ""))
+        self.sync_folder.setPlaceholderText("Off. Choose a folder, or create a GitHub repo below")
+        self.sync_folder.editingFinished.connect(
+            lambda: self._set("sync_folder", self.sync_folder.text().strip()))
+        row.addWidget(self.sync_folder, 1)
+        browse = QPushButton("Choose…")
+        browse.clicked.connect(self._sync_browse)
+        row.addWidget(browse)
+        form.addRow("Folder", row)
+        self.sync_git = QCheckBox("Commit and push with Git (pull first, push after each change)")
+        self.sync_git.setChecked(bool(st.get("sync_git")))
+        self.sync_git.toggled.connect(lambda on: self._set("sync_git", on))
+        form.addRow("", self.sync_git)
+        self.sync_auto = QCheckBox("Sync automatically: at start, after a profile changes, and hourly")
+        self.sync_auto.setChecked(bool(st.get("sync_auto", True)))
+        self.sync_auto.toggled.connect(lambda on: self._set("sync_auto", on))
+        form.addRow("", self.sync_auto)
+        row = QHBoxLayout()
+        now = QPushButton("Sync now")
+        now.clicked.connect(self._sync_now)
+        row.addWidget(now)
+        create = QPushButton("Create a private GitHub repo…")
+        create.setToolTip("Uses the GitHub CLI (gh), signed in with `gh auth login`.")
+        create.clicked.connect(self._sync_create)
+        row.addWidget(create)
+        row.addStretch(1)
+        form.addRow("", row)
+        self.sync_state = wrap_label()
+        form.addRow("Last sync", self.sync_state)
+        runner = getattr(self.s, "sync_runner", None)
+        if runner is not None:
+            runner.finished.connect(self._sync_report)
+            self._sync_report(runner.last)
+        return box
+
+    def _sync_browse(self):
+        path = QFileDialog.getExistingDirectory(self, "Profile folder", self.sync_folder.text() or str(Path.home()))
+        if path:
+            self.sync_folder.setText(path)
+            self._set("sync_folder", path)
+            self.sync_git.setChecked((Path(path) / ".git").exists())
+
+    def _sync_now(self):
+        runner = getattr(self.s, "sync_runner", None)
+        if not self.s.settings.get("sync_folder"):
+            self.sync_state.setText("Choose a folder first.")
+        elif runner is not None:
+            self.sync_state.setText("Syncing…")
+            runner.run(force=True)
+
+    def _sync_create(self):
+        from . import sync
+        name = ask_text(self, "Create a private GitHub repo",
+                        "Repository name (created private in your GitHub account):", sync.DEFAULT_REPO_NAME)
+        if not name:
+            return
+        self.sync_state.setText(f"Creating {esc(name)}…")
+
+        def done(result):
+            ok, where = result
+            if not ok:
+                self.sync_state.setText(f"Could not create the repository: {esc(where)}")
+                return
+            self.sync_folder.setText(where)
+            self.s.settings.update(sync_folder=where, sync_git=True)
+            self.sync_git.setChecked(True)
+            self.s.save_settings()
+            self._sync_now()
+
+        run_async(lambda: sync.create_github_repo(name.strip()), done,
+                  lambda msg: self.sync_state.setText(f"Could not create the repository: {esc(msg)}"))
+
+    def _sync_report(self, report):
+        from .syncui import describe
+        self.sync_state.setText(esc(describe(report)))
 
     def _sync_switches(self):
         """The tray menu has the same switches; show the current state."""

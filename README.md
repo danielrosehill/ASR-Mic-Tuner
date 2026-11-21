@@ -134,6 +134,7 @@ asr-mic-tuner --asr-mic                       # run ASR Mic's chain (used by its
 | Path | Contents |
 |---|---|
 | `~/.config/asr-mic-tuner/profiles/<mic key>.json` | one file per microphone (v2.7, `docs/mic-identity.md`): its identity (vendor/product ID, serial, codec, machine), remembered gain, profiles (`presets`, with `port`, `noise_reduction`, `tuned`), the active profile per port (`active_profile`) and the chain bound per port (`chain_bindings`) |
+| profile folder (Settings → Profile sync) | optional copy of `profiles/` and `chains/`, synced or pushed to a private Git repo (`docs/profiles.md`); state in `~/.config/asr-mic-tuner/sync-state.json` |
 | `~/.config/asr-mic-tuner/devices.json` | probed-curve cache, and pre-v2.7 entries for mics not seen since the upgrade (`legacy`) |
 | `~/.config/asr-mic-tuner/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
 | `~/.local/share/asr-mic-tuner/history.db` | SQLite: `measurements`, `profiles` |

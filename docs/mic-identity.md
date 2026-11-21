@@ -42,10 +42,21 @@ codec file gives `Realtek ALC257` / `0x10ec0257` plus a subsystem id. DMI is rea
 for built-in mics the vendor/product pair identifies the controller chip only. The
 controller, the codec and the machine model together identify the mic.
 
-**Assumed, not yet tested:** that USB mics carry `device.serial` (from udev `ID_SERIAL`,
-which may be `Vendor_Product` with no real serial), and that Bluetooth sources carry
-`api.bluez5.address`. Check with a real USB mic and headset (`--list --json`) and
-update this section.
+**Confirmed for USB** (2026-11-21, a desktop with two USB mics):
+
+| Mic | `device.vendor.id`:`product.id` | `device.serial` | Key |
+|---|---|---|---|
+| Boya BY-CM1 | `0xff01`:`0x000b` | `BY-CM1_BY-CM1_20180508` | `usb:ff01:000b:BY-CM1_BY-CM1_20180508` |
+| Samson Q2U | `0x17a0`:`0x0304` | `Samson_Technologies_Samson_Q2U_Microphone` | `usb:17a0:0304:Samson_Technologies_Samson_Q2U_Microphone` |
+
+`device.serial` is udev's `ID_SERIAL`, which is `<vendor>_<product>[_<serial>]`. Neither mic
+has a per-unit serial. The Boya's `20180508` looks like a firmware date that every unit
+shares (assumed). So in practice the key identifies the **model**, and two identical mics
+share a profile, which is acceptable because they behave alike. The key does not depend
+on the USB port or the card profile. A v2.6 chain binding on the Boya migrated to its key,
+and ASR Mic kept running that chain after the upgrade.
+
+**Assumed, not yet tested:** that Bluetooth sources carry `api.bluez5.address`.
 
 ## Files
 
@@ -89,7 +100,7 @@ file, and the ASR Mic supervisor's `plan()` resolves the binding.
 
 ## Open
 
-- Verify USB serial and Bluetooth address handling with real devices (above).
+- Verify the Bluetooth address with a real headset (above).
 - Is the HDA `Subsystem Id` a better machine identifier than DMI? It is recorded in
   `identity.codec.subsystem_id`, so switching the key later needs no new probing.
 - Manual merge ("these two keys are the same mic") if a key ever changes.

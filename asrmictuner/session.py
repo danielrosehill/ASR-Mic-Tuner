@@ -358,6 +358,15 @@ class Session(QObject):
                 return label
         return None
 
+    def reload_profiles(self):
+        """Re-read the per-mic profile files (after a sync brought changes in)."""
+        self.config = load_config()
+        fresh = load_settings()
+        self.settings["chain_bindings"] = fresh["chain_bindings"]
+        self.settings["_bindings_snapshot"] = fresh["_bindings_snapshot"]
+        self.presets_changed.emit()
+        self.settings_changed.emit()
+
     # -- settings --
     def save_settings(self):
         save_settings(self.settings)

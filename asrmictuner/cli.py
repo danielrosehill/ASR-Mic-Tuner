@@ -184,6 +184,9 @@ def main(argv=None):
     parser.add_argument("--device", help="source name for --measure (default: first hardware device)")
     parser.add_argument("--location", help="location tag for --measure")
     parser.add_argument("--notes", help="notes for --measure")
+    parser.add_argument("--sync", action="store_true",
+                        help="sync profiles and chains with the profile folder (Settings → Profile sync), "
+                             "print a JSON report, and exit")
     parser.add_argument("--restore", action="store_true",
                         help="reapply saved gain settings and exit (used by the login unit)")
     parser.add_argument("--delay", type=float, default=0.0,
@@ -218,6 +221,11 @@ def main(argv=None):
         return _measure(args.measure, args.seconds or 15.0, args.device, args.location, args.notes)
     if args.tune:
         return _tune(args.seconds or 30.0, args.device, args.place, apply=not args.dry_run)
+    if args.sync:
+        from . import store, sync
+        report = sync.sync(store.load_settings())
+        print(json.dumps(report, indent=2))
+        return 0 if report["ok"] else 1
     if args.restore:
         from .core import restore_saved
         return restore_saved(args.delay)

@@ -33,6 +33,9 @@ DB_FILE = DATA_DIR / "history.db"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 
 DEFAULT_SETTINGS = {
+    "sync_folder": "",                  # profile folder (sync.py); "" = off
+    "sync_git": False,                  # commit and push the folder with Git
+    "sync_auto": True,                  # sync at start, after changes, hourly
     "openrouter_api_key": "",
     "openrouter_model": "google/gemini-3.8-flash",
     "ai_include_audio": False,
