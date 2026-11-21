@@ -352,7 +352,7 @@ something on screen needs it.
 
 ## 13. v1.1 additions (2026-10-27)
 
-- **ASR auto gain** (`watch.py`, setting `asr_autogain`, default on; ceiling
+- **ASR auto gain** (`watch.py`, setting `asr_autogain`, default on until v2.5, off since; ceiling
   `asr_autogain_max_db`, default 15 dB = `ZONE_CAUTION_HI`). It runs on the same
   speech-gated blocks as the quiet alert, only while another app records. It needs
   30 s of recording and ≥ 8 s of speech per decision, uses the p95 block peak, has a
@@ -504,3 +504,15 @@ and user unit), `fxpage.py` (the tab). Reference: `docs/effects.md`.
   laptop dmic pairs are exposed as plain stereo without one, and
   webrtc-audio-processing 1.x dropped its beamformer. The neural denoisers are
   what the Android "voice focus" features mostly are anyway.
+
+## v2.5 change (2026-11-21): auto gain off by default
+
+`asr_autogain` now defaults to `false` (`store.py` defaults and the fallback in
+`watch.py`). Reason: on the laptop's internal mic
+(`alsa_input.pci-0000_04_00.6.analog-stereo`) it left the gain far too low for
+dictation; on 2026-11-21 the source sat at 25% (−36 dB) with no remembered gain in
+`devices.json`. Gain is now manual by default: set it yourself, or run the Measure
+mic test and press *Apply recommended gain*. Auto gain is still available as an
+opt-in in the tray menu and Settings. Existing installs keep whatever value is in
+`~/.config/asr-mic-tuner/settings.json`; the default only applies where the key is
+absent, so flip it there (or in the UI) on machines that already had it on.

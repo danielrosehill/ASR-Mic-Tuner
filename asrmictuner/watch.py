@@ -15,7 +15,7 @@ statistic as the live verdict (95th-percentile block peak); if that sits
 `margin` dB or more under the target band, one notification goes out and the
 window starts again. Moving the gain or switching device also starts it again.
 
-ASR auto gain (on by default) works on the same speech blocks, but it moves the
+ASR auto gain (off by default since v2.5) works on the same speech blocks, but it moves the
 **analog** gain rather than processing audio. A DSP auto gain reacts word by
 word and pumps the room noise up in every pause, which is what goes wrong with
 it for ASR. This one:
@@ -95,7 +95,7 @@ class QuietWatch(QObject):
         return float(self.s.settings.get("quiet_margin_db", 6))
 
     def autogain_enabled(self):
-        return bool(self.s.settings.get("asr_autogain", True))
+        return bool(self.s.settings.get("asr_autogain", False))
 
     def ceiling_db(self):
         return float(self.s.settings.get("asr_autogain_max_db", ZONE_CAUTION_HI))

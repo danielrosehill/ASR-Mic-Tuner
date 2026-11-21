@@ -50,7 +50,7 @@ DEFAULT_SETTINGS = {
     "asr_mic_source": "",               # mic feeding ASR Mic; "" follows the default input
     "asr_mic_bypass": False,
     "noise_reduction": "off",           # quick denoiser over the chain: off, light, strong (engine.NOISE_MODES)
-    "asr_autogain": True,               # slow analog auto gain while dictating (watch.py)
+    "asr_autogain": False,              # slow analog auto gain while dictating (watch.py); off by default since v2.5
     "asr_autogain_max_db": 15,
     "quiet_alert": True,                # notify when dictation runs too quiet (watch.py)
     "quiet_window_min": 3,
