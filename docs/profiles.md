@@ -45,7 +45,8 @@ The sync is three-way per file. It compares each side against its content at the
 |---|---|---|
 | changed | unchanged | local copied to the folder (a deletion is copied too) |
 | unchanged | changed | folder copied to local (a deletion too), and the app reloads its profiles |
-| changed | changed | the newer one wins. Profiles are compared by their `updated` field, chains by file time. The other copy is kept in the folder as `<name>.conflict-<host>-<time>.json` |
+| changed | changed (a mic's profile file, v2.9) | merged: each computer's own bucket from that computer's copy, shared fields from the newer copy (`sync._merge_profile`) |
+| changed | changed (anything else) | the newer one wins. Profiles are compared by their `updated` field, chains by file time. The other copy is kept in the folder as `<name>.conflict-<host>-<time>.json` |
 
 With Git, each sync runs these steps:
 1. `git ls-remote --heads origin`. A brand-new empty repo is fine.
@@ -69,3 +70,4 @@ A failed sync never touches the mic or ASR Mic.
 - The same configs synced through a local bare Git repo, starting empty.
 - The app, run offscreen, synced at start and showed "Synced …, pushed".
 - The laptop and the desktop then synced through a real private GitHub repo.
+- 2026-11-21, v2.9: the tray's start-up sync and `--sync` ran at once on one clone, and the second push was rejected ("cannot lock ref"). Fixed with an exclusive lock, `~/.config/asr-mic-tuner/sync.lock` (`sync.sync`).

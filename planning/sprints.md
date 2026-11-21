@@ -32,7 +32,12 @@ after its card profile changes from `analog-stereo` to `mono-fallback`.
       (2026-11-21, see `docs/profiles.md` → Tested).
 - [ ] A USB mic tuned on one machine applied automatically on the other: needs the mic moved.
 
-## Sprint 3: ASR Mic gain and format (target v2.9)
+## Sprint 2b: profiles per computer (v2.9, shipped 2026-11-21)
+
+Added on request: a profile is a mic, on a computer, in a place. Per-computer buckets in
+each mic file, merge on sync. See `docs/mic-identity.md`.
+
+## Sprint 3: ASR Mic gain and format (target v3.0)
 
 - [ ] Fixed ASR Mic gain stage per binding, saved in the profile; slider in ASR Effects.
 - [ ] Quick tune sets hardware gain (peaks) then ASR Mic gain (speech loudness).
@@ -41,14 +46,14 @@ after its card profile changes from `analog-stereo` to `mono-fallback`.
 
 Done when: raising ASR Mic gain changes what the dictation app hears and nothing else.
 
-## Sprint 4: accuracy harness (target v3.0)
+## Sprint 4: accuracy harness (target v3.1)
 
 - [ ] Record a passage raw; render candidate chains offline; transcribe off-laptop; score WER.
 - [ ] Cost estimate and approval before any run beyond a pilot.
 - [ ] Results per mic in the Measure tab; evidence written into `docs/effects.md`.
 - [ ] Use it to settle: does level matter to Whisper, does 16 kHz matter, does each denoiser help.
 
-## Sprint 5: new effects, chosen by the harness (target v3.1)
+## Sprint 5: new effects, chosen by the harness (target v3.2)
 
 - [ ] Echo cancellation via PipeWire's WebRTC module.
 - [ ] Dereverberation, if Sprint 4 research finds a backend that fits the rules in `CLAUDE.md`.

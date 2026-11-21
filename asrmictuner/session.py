@@ -18,6 +18,7 @@ from .core import (
     pick_boost_controls, pick_gain_control, probe_curve, read_controls,
     resolve_hardware_for, save_config, set_source_percent,
 )
+from .identity import machine_label, this_machine
 from .store import Store, _adopt_legacy_settings, load_settings, save_settings
 
 
@@ -246,7 +247,12 @@ class Session(QObject):
     def save_preset(self, label, notes=""):
         if not self.device:
             return
-        entry = {"notes": notes, "created": datetime.now().astimezone().isoformat(timespec="seconds")}
+        # A profile is this mic, on this computer, in this place (v2.9). The mic and
+        # computer are where it is stored; both are written into the entry too, so
+        # a synced file reads on its own.
+        entry = {"notes": notes, "created": datetime.now().astimezone().isoformat(timespec="seconds"),
+                 "place": label, "port": self.device.port,
+                 "computer": machine_label(this_machine())}
         if self.gain is not None:
             entry.update(index=self.gain.index, db=self.gain_db(), control=self.gain.name)
         else:

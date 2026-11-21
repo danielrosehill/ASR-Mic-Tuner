@@ -58,9 +58,37 @@ and ASR Mic kept running that chain after the upgrade.
 
 **Assumed, not yet tested:** that Bluetooth sources carry `api.bluez5.address`.
 
+## A profile is a mic, on a computer, in a place (v2.9)
+
+Since v2.9 each mic's file holds one bucket per **computer**, so a USB headset that moves
+between a laptop and a desktop has separate gain profiles on each. The same mic draws a
+different gain on a different USB port controller, and sits in a different room.
+
+- Computer: `identity.this_machine()`. `id` is the first 12 hex of sha256(`/etc/machine-id`).
+  It also records hostname, kind (from DMI `chassis_type`: laptop, desktop, …), OS and DMI
+  vendor/product. The raw machine-id is never stored.
+- Place: the profile's label (Quick tune's Place box, else the window's location). Each
+  entry also carries `place`, `port` and `computer` (for example
+  `"daniellaptop (Linux laptop)"`), so a synced file reads on its own.
+- `remembered`, `presets` and `active_profile` are `{<computer id>: …}` in the file, and
+  `machines` describes each computer id. `identity` and `chain_bindings` stay shared:
+  a chain suits the mic wherever it is plugged in. `"format": 2` marks the layout.
+- In memory (`load_config`) the app sees only **this computer's** bucket, in the same dict
+  shapes as before. `profiles.save_machine_view` writes it back and leaves other computers'
+  buckets alone.
+- A v2.7–2.8 file (format 1, flat) belongs to the computer that first loads it, except
+  another computer's built-in mic, whose file is left untouched until its own computer
+  converts it.
+- Sync (`docs/profiles.md`): when two computers changed the same mic file, it merges. The
+  folder's copy is taken with this computer's buckets from the local copy, and the shared
+  fields from the newer copy. There is no conflict copy.
+
 ## Files
 
 `~/.config/asr-mic-tuner/profiles/<key with ":" as "__">.json`:
+
+Format 1 (v2.7–2.8) is shown below. Format 2 wraps `remembered`, `presets` and
+`active_profile` in `{<computer id>: …}` and adds `machines` and `"format": 2` (above).
 
 ```json
 {"mic_key": "usb:0d8c:0014:SN1234",

@@ -53,7 +53,7 @@ class SyncRunner(QObject):
     def _on_done(self, report):
         self.running = False
         self.last = report
-        if report.get("pulled") or any(d.startswith("local:") for d in report.get("deleted", [])):
+        if report.get("pulled") or report.get("merged") or any(d.startswith("local:") for d in report.get("deleted", [])):
             self._quiet = True           # our own reload is not a change to sync again
             try:
                 self.s.reload_profiles()
@@ -73,6 +73,8 @@ def describe(report):
     parts = [f"{len(report['pulled'])} in", f"{len(report['pushed'])} out"]
     if report.get("deleted"):
         parts.append(f"{len(report['deleted'])} removed")
+    if report.get("merged"):
+        parts.append(f"{len(report['merged'])} merged")
     if report.get("conflicts"):
         parts.append(f"{len(report['conflicts'])} conflict(s), both copies kept")
     if report.get("git"):

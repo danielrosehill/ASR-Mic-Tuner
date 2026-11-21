@@ -72,6 +72,42 @@ def _files(base):
     return out
 
 
+def _merge_profile(rel, a, b):
+    """Merge two edited copies of one mic's profile file (format 2): the folder's
+    copy, with this computer's buckets taken from the local copy; shared fields
+    (identity, chain_bindings) from whichever is newer. None if not mergeable."""
+    from .identity import this_machine
+    from .profiles import FORMAT, PER_MACHINE
+    if not rel.startswith("profiles/"):
+        return None
+    try:
+        mine, theirs = json.loads(a.read_text()), json.loads(b.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    for side in (mine, theirs):
+        if int(side.get("format", 1)) < FORMAT:
+            if any(side.get(f) for f in PER_MACHINE):
+                return None             # old flat profiles: whose computer is unknown
+            side["format"] = FORMAT     # only shared fields (a chain binding): nothing to place
+    me = this_machine()["id"]
+    out = dict(theirs)
+    for f in PER_MACHINE + ("machines",):
+        bucket = dict(theirs.get(f) or {})
+        if (mine.get(f) or {}).get(me) is not None:
+            bucket[me] = mine[f][me]
+        else:
+            bucket.pop(me, None)
+        out[f] = bucket
+    newer = mine if _when(a) >= _when(b) else theirs
+    for f in ("identity", "chain_bindings"):
+        if newer.get(f) is not None:
+            out[f] = newer[f]
+        else:
+            out.pop(f, None)
+    out["updated"] = max(mine.get("updated", ""), theirs.get("updated", ""))
+    return json.dumps(out, indent=2, sort_keys=True) + "\n"
+
+
 def _load_state():
     try:
         return json.loads(STATE_FILE.read_text())
@@ -97,12 +133,23 @@ def remote_visibility(folder):
 
 
 def sync(settings, local=CONFIG_DIR):
+    """One sync at a time per machine: the tray's automatic sync and
+    `--sync` would otherwise race on the same clone (seen 2026-11-21: the
+    second push was rejected with "cannot lock ref")."""
+    import fcntl
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CONFIG_DIR / "sync.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _sync(settings, local)
+
+
+def _sync(settings, local=CONFIG_DIR):
     """Run one sync. Returns a JSON-able report:
     {"ok", "folder", "pulled": [...], "pushed": [...], "deleted": [...], "conflicts": [...],
      "git": "...", "error": "..."}. Never raises for expected failures."""
     folder = Path(os.path.expanduser(settings.get("sync_folder") or ""))
     report = {"ok": False, "folder": str(folder), "pulled": [], "pushed": [], "deleted": [],
-              "conflicts": [], "git": "", "error": "",
+              "conflicts": [], "merged": [], "git": "", "error": "",
               "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     if not settings.get("sync_folder"):
         report["error"] = "No profile folder set."
@@ -151,6 +198,15 @@ def sync(settings, local=CONFIG_DIR):
             elif b_changed and not a_changed:
                 winner = "folder"
             else:                               # both changed (or no history yet)
+                merged = _merge_profile(rel, a, b) if a and b else None
+                if merged is not None:
+                    # Each computer only edits its own bucket (v2.9), so a profile
+                    # edited on two computers merges cleanly: no conflict copy.
+                    for dest in (folder / rel, local / rel):
+                        dest.write_text(merged)
+                    report["merged"].append(rel)
+                    new_state[rel] = hashlib.sha256(merged.encode()).hexdigest()
+                    continue
                 if a and b:
                     winner = "local" if _when(a) >= _when(b) else "folder"
                     loser = b if winner == "local" else a
@@ -185,7 +241,8 @@ def sync(settings, local=CONFIG_DIR):
             _git(folder, "add", "-A")
             rc, _ = _git(folder, "diff", "--cached", "--quiet")
             if rc:
-                changed = len(report["pushed"]) + len(report["deleted"]) + len(report["conflicts"])
+                changed = (len(report["pushed"]) + len(report["deleted"]) + len(report["conflicts"])
+                           + len(report["merged"]))
                 _git(folder, "commit", "-q", "-m", f"Sync from {host}: {changed} file(s)")
             rc, out = _git(folder, "push", "-q", "-u", "origin", "HEAD", timeout=90)
             report["git"] = "pushed" if rc == 0 else f"push failed: {out[-300:]}"

@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from . import ai, autostart, kwin, store
 from .core import TARGET_LO_DB, fmt_gain, fmt_level
+from .identity import machine_label, this_machine
 from .widgets import TRAY_STYLE_DEFAULT, TRAY_STYLES, tray_icon
 from .qtutil import (
     ask_ai, ask_text, ai_html, esc, findings_html, key_result, metrics_html, run_async,
@@ -229,7 +230,7 @@ class ProfilesPage(QWidget):
         self.s = session
         root = QVBoxLayout(self)
 
-        presets = QGroupBox("Gain presets for this microphone")
+        presets = QGroupBox(f"Profiles for this microphone on {machine_label(this_machine())} (one per place)")
         pl = QVBoxLayout(presets)
         pl.addWidget(wrap_label(
             "<small>Named gain settings for this device — one per room or use. The ★ preset is "
@@ -306,6 +307,10 @@ class ProfilesPage(QWidget):
             notes = f" — {entry['notes']}" if entry.get("notes") else ""
             item = QListWidgetItem(f"{star}{label}: {value}{notes}")
             item.setData(Qt.ItemDataRole.UserRole, label)
+            d = self.s.device
+            item.setToolTip(f"{d.description if d else ''} on {machine_label(this_machine())}, "
+                            f"in {entry.get('place', label)}"
+                            + (f", port {entry['port']}" if entry.get("port") else ""))
             self.preset_list.addItem(item)
         saved = self.s.remembered()
         self.remembered.setText(

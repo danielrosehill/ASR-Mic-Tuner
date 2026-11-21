@@ -128,3 +128,61 @@ def describe(ident):
         lines.append(f"Machine: {m.get('vendor', '')} {m.get('product', '')} {m.get('version', '')}".rstrip())
     lines.append(f"Node: {ident.get('node_name_seen', '')}")
     return "\n".join(lines)
+
+
+# -- the computer (v2.9): a profile is a mic, on a computer, in a place --
+
+_CHASSIS = {
+    **{n: "desktop" for n in (3, 4, 5, 6, 7, 13, 15, 16, 24, 35, 36)},
+    **{n: "laptop" for n in (8, 9, 10, 14, 31, 32)},
+    **{n: "tablet" for n in (11, 30)},
+    **{n: "server" for n in (17, 23, 25, 28, 29)},
+    **{n: "mini PC" for n in (34,)},
+}
+
+
+def _os_name():
+    text = _read("/etc/os-release")
+    m = re.search(r'^PRETTY_NAME="?([^"\n]+)"?', text, re.M)
+    return m.group(1) if m else "Linux"
+
+
+@functools.lru_cache(maxsize=1)
+def this_machine():
+    """{"id", "hostname", "kind", "os", "vendor", "product", "version"} for this computer.
+
+    `id` is the first 12 hex digits of sha256(/etc/machine-id): stable across
+    renames and reinstalls of the app, and not the raw machine-id itself.
+    """
+    import hashlib
+    import socket
+    raw = _read("/etc/machine-id") or _read("/var/lib/dbus/machine-id") or socket.gethostname()
+    try:
+        chassis = _CHASSIS.get(int(_read(DMI / "chassis_type") or 0), "computer")
+    except ValueError:
+        chassis = "computer"
+    m = machine()
+    return {
+        "id": hashlib.sha256(raw.encode()).hexdigest()[:12],
+        "hostname": socket.gethostname(),
+        "kind": chassis,
+        "os": _os_name(),
+        "vendor": m.get("vendor", ""),
+        "product": m.get("product", ""),
+        "version": m.get("version", ""),
+    }
+
+
+def machine_label(info):
+    """'daniellaptop (Linux laptop)'-style text for a this_machine() dict."""
+    if not info:
+        return "unknown computer"
+    os_word = "Linux" if "linux" in info.get("os", "").lower() or info.get("os", "").startswith("Ubuntu") else info.get("os", "")
+    return f"{info.get('hostname', '?')} ({os_word} {info.get('kind', 'computer')})".replace("( ", "(")
+
+
+def is_this_machines_internal(key):
+    """True for an internal:<machine>:… key of this computer."""
+    m = machine()
+    place = _slug(f"{m.get('vendor', '')}_{m.get('product', '')}")
+    return key.startswith(f"internal:{place}:")

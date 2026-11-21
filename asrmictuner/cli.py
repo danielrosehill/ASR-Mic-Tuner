@@ -98,6 +98,7 @@ def _tune(seconds, device_name, place, apply=True):
     from datetime import datetime
     from . import analysis, store, tune
     from .capture import Analyser
+    from .identity import machine_label, this_machine
     from .core import (Curve, curve_cache_key, default_source, fmt_gain, list_devices, load_config,
                        note_identity, pick_gain_control, read_controls, resolve_hardware_for,
                        save_config)
@@ -146,6 +147,7 @@ def _tune(seconds, device_name, place, apply=True):
     if apply:
         entry = {"notes": "Quick tune", "created": datetime.now().astimezone().isoformat(timespec="seconds"),
                  "index": gain.index, "db": curve.db(gain.index), "control": gain.name, "port": dev.port,
+                 "place": label, "computer": machine_label(this_machine()),
                  "noise_reduction": settings.get("noise_reduction", "off"),
                  "tuned": dict(passes[-1]["summary"], at=datetime.now().astimezone().isoformat(timespec="seconds"))}
         note_identity(config, dev)

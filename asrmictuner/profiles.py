@@ -24,7 +24,9 @@ from datetime import datetime, timezone
 
 from .identity import filename
 
-FIELDS = ("identity", "remembered", "presets", "active_profile", "chain_bindings")
+FIELDS = ("identity", "remembered", "presets", "active_profile", "chain_bindings", "machines", "format")
+PER_MACHINE = ("remembered", "presets", "active_profile")
+FORMAT = 2      # v2.9: remembered / presets / active_profile are {machine id: ...}
 
 
 def profiles_dir():
@@ -66,7 +68,7 @@ def update(key, **fields):
             data[name] = value
     if json.dumps(data, sort_keys=True) == before:
         return False
-    if not any(data.get(f) for f in FIELDS if f != "identity"):
+    if not any(data.get(f) for f in FIELDS if f not in ("identity", "machines", "format")):
         # Nothing remembered about this mic any more.
         path.unlink(missing_ok=True)
         return True
@@ -76,6 +78,44 @@ def update(key, **fields):
     tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
     tmp.replace(path)
     return True
+
+
+# -- per-computer buckets (v2.9) --
+
+def machine_buckets(key, prof):
+    """{"remembered": {mid: ...}, "presets": {mid: ...}, "active_profile": {mid: ...}}
+    for a profile file. A pre-v2.9 (format 1) file has one flat set: it belongs
+    to this computer, unless it is another computer's built-in mic (None)."""
+    from .identity import is_this_machines_internal, this_machine
+    if int(prof.get("format", 1)) >= FORMAT:
+        return {f: dict(prof.get(f) or {}) for f in PER_MACHINE}
+    if key.startswith("internal:") and not is_this_machines_internal(key):
+        return None
+    me = this_machine()["id"]
+    return {f: ({me: prof[f]} if prof.get(f) else {}) for f in PER_MACHINE}
+
+
+def save_machine_view(key, fields):
+    """Write this computer's view (`identity`, `remembered`, `presets`,
+    `active_profile`) into the file of `key`, keeping other computers' buckets."""
+    from .identity import this_machine
+    path = profiles_dir() / f"{filename(key)}.json"
+    try:
+        prof = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        prof = {"mic_key": key}
+    buckets = machine_buckets(key, prof) or {f: {} for f in PER_MACHINE}
+    me = this_machine()
+    for f in PER_MACHINE:
+        if fields.get(f):
+            buckets[f][me["id"]] = fields[f]
+        else:
+            buckets[f].pop(me["id"], None)
+    machines = dict(prof.get("machines") or {})
+    if any(buckets[f].get(me["id"]) for f in PER_MACHINE):
+        machines[me["id"]] = {k: v for k, v in me.items() if k != "id"}
+    return update(key, identity=fields.get("identity") or prof.get("identity"), machines=machines,
+                  format=FORMAT, **{f: buckets[f] for f in PER_MACHINE})
 
 
 # -- legacy (v2.6 and earlier: keyed by PipeWire node name) --

@@ -542,3 +542,10 @@ of a private Git repository that the app pulls, commits and pushes (it can creat
 `gh`). Three-way per file, newer wins on a true conflict, and the other copy is kept. Off
 until a folder is chosen. `asr-mic-tuner --sync` runs it headless. Details:
 [`profiles.md`](profiles.md).
+
+## v2.9 change (2026-11-21): a profile is a mic, on a computer, in a place
+
+Profiles, the remembered gain and the active profile are kept per computer inside each
+mic's file. A USB mic used on two machines has its own profiles on each, and a sync merges
+edits from both. Profile entries record `place`, `port` and `computer`. Details:
+[`mic-identity.md`](mic-identity.md) → "A profile is a mic, on a computer, in a place".

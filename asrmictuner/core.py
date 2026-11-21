@@ -679,10 +679,12 @@ def load_config():
     mic, keyed by mic_key, plus the machine-local probe cache.
 
     `devices[key]` is the remembered (default) gain that `--restore` reapplies;
-    `presets[key][place]` are the named alternatives; `active_profile[key][port]`
-    is the profile in use on that port; `identities[key]` is identity.identity().
+    `presets[key][label]` are the profiles; `active_profile[key][port]` is the
+    profile in use on that port; `identities[key]` is identity.identity().
     Since v2.7 the per-mic parts live in profiles/<key>.json (profiles.py) and
     devices.json keeps only `curves` and anything not yet migrated (`legacy`).
+    Since v2.9 a profile is a mic, on a computer, in a place: the files hold one
+    bucket per computer, and these dicts are **this computer's** bucket only.
     """
     try:
         data = json.loads(DEVICES_FILE.read_text())
@@ -703,20 +705,26 @@ def load_config():
     data.setdefault("legacy", {})
     for field in ("devices", "presets", "active_profile", "identities"):
         data[field] = {}
+    me = identity.this_machine()["id"]
     for key, prof in profiles.read_all().items():
-        if prof.get("remembered"):
-            data["devices"][key] = prof["remembered"]
-        data["presets"][key] = prof.get("presets") or {}
-        data["active_profile"][key] = prof.get("active_profile") or {}
+        buckets = profiles.machine_buckets(key, prof)
+        if buckets is None:
+            continue                    # another computer's built-in mic, pre-v2.9 file: not ours
+        if buckets["remembered"].get(me):
+            data["devices"][key] = buckets["remembered"][me]
+        data["presets"][key] = buckets["presets"].get(me) or {}
+        data["active_profile"][key] = buckets["active_profile"].get(me) or {}
         if prof.get("identity"):
             data["identities"][key] = prof["identity"]
-    data["_snapshot"] = json.loads(json.dumps({k: _profile_fields(data, k) for k in profiles.read_all()}))
+    data["_snapshot"] = json.loads(json.dumps({k: _profile_fields(data, k) for k in
+                                               set(data["presets"]) | set(data["devices"])}))
     if any(data["legacy"].values()):
         _adopt_legacy(data, list_devices())
     return data
 
 
 def _profile_fields(config, key):
+    """This computer's view of one mic (what save_config writes back)."""
     return {
         "identity": (config.get("identities") or {}).get(key),
         "remembered": (config.get("devices") or {}).get(key),
@@ -769,7 +777,7 @@ def save_config(config):
     for key in keys:
         fields = _profile_fields(config, key)
         if fields != snapshot.get(key):
-            profiles.update(key, **fields)
+            profiles.save_machine_view(key, fields)
             snapshot[key] = json.loads(json.dumps(fields))
 
 
