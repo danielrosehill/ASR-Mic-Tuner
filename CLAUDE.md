@@ -42,3 +42,8 @@ reads it.
 `docs/spec.md` (design and the processing boundary, §3 and §14), `docs/effects.md`
 (every effect, its backend and test results), `docs/asr-mic.md` (the ASR Mic source),
 `docs/analysis.md` (every metric and threshold).
+
+## Planning
+
+`planning/` (public): sprints, ideas backlog and explorations not yet shipped. Start at
+`planning/README.md`. Keep it free of hostnames, serials, MACs and personal details.
