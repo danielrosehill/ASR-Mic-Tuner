@@ -64,7 +64,11 @@ ZONE_CAUTION_HI = 15.0
 # Calibration ---------------------------------------------------------------
 CALIB_QUIET_S = 3.0
 CALIB_SPEECH_S = 8.0
-CALIB_TARGET_PEAK_DB = -12.0
+# Speech peaks (95th percentile of block peaks) aim at -10 dBFS since v2.6. ASR
+# loses more to a quiet signal (soft consonants under the floor, VAD misses)
+# than to a hot one, as long as nothing clips; clipping is guarded separately
+# (quick tune and auto gain both step down on any clipped run).
+CALIB_TARGET_PEAK_DB = -10.0
 # Conservative mode aims speech peaks at the bottom of the target band, so a
 # sudden loud source (a crying baby, a shout) has 18 dB instead of 12 dB of room
 # before full scale, and auto gain raises in half-size steps.

@@ -11,6 +11,8 @@ In scope:
 - Analog gain (and software volume where no analog control exists), levels, clipping.
 - Measuring a mic and the room on-device (Measure tab, `analysis.py`) and recommending
   gain changes, with a one-click apply that is remembered **per microphone**.
+- Quick tune (`tune.py`): listen ~30 s, set the gain, save a profile per mic, port and
+  place, applied again when that mic becomes the default (`docs/quick-tune.md`).
 - Watching levels while another app dictates (quiet-mic alert, `watch.py`).
 - Input-side processing chains run by our own engine inside PipeWire (ASR Effects
   tab, `engine.py`, `fxpage.py`), bound per microphone and port, published as the

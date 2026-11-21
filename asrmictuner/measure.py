@@ -31,9 +31,10 @@ MIN_VOICE_S = 5.0       # "Done reading" before this cancels instead
 
 
 class MeasurePage(QWidget):
-    def __init__(self, session, parent=None):
+    def __init__(self, session, parent=None, tune=None):
         super().__init__(parent)
         self.s = session
+        self.tune = tune
         self.recording = None
         self.current = None
 
@@ -43,6 +44,33 @@ class MeasurePage(QWidget):
         self.mic_summary = wrap_label()
         ml.addWidget(self.mic_summary)
         root.addWidget(self.mic_box)
+
+        if tune is not None:
+            qbox = QGroupBox("Quick tune: talk for 30 s, get the gain set and saved as a profile")
+            ql = QVBoxLayout(qbox)
+            qrow = QHBoxLayout()
+            qrow.addWidget(QLabel("Place"))
+            self.place = QComboBox()
+            self.place.setEditable(True)
+            self.place.lineEdit().setPlaceholderText("e.g. Home office, Coffee shop")
+            qrow.addWidget(self.place, 1)
+            self.tune_button = QPushButton("Quick tune (30 s)")
+            self.tune_button.clicked.connect(self._tune)
+            qrow.addWidget(self.tune_button)
+            ql.addLayout(qrow)
+            self.tune_state = wrap_label()
+            self.tune_state.setText("<small>Say anything, at your normal dictating distance. Large changes get a "
+                                    "second 15 s listen to confirm. The profile keeps the gain, the port and the "
+                                    "noise reduction mode, and is applied whenever this mic becomes the default.</small>")
+            ql.addWidget(self.tune_state)
+            root.addWidget(qbox)
+            tune.progress.connect(lambda _p, text: (self.tune_button.setText("Cancel"),
+                                                    self.tune_state.setText(f"<b>{esc(text)}</b>")))
+            tune.finished.connect(lambda _l, text: self._tune_end(text))
+            tune.failed.connect(self._tune_end)
+            self.s.presets_changed.connect(self._fill_places)
+            self.s.device_changed.connect(self._fill_places)
+            self._fill_places()
 
         top = QHBoxLayout()
         voice = QGroupBox("Mic test: read this aloud")
@@ -167,6 +195,29 @@ class MeasurePage(QWidget):
         self.s.gain_changed.connect(self._update_mic_summary)
         self._show_passage()
         self._update_mic_summary()
+
+    # -- quick tune --
+    def _tune(self):
+        if self.recording:
+            return
+        place = self.place.currentText().strip()
+        if place:
+            self.s.set_location(place)
+        self.tune.start(place)
+
+    def _tune_end(self, text):
+        self.tune_button.setText("Quick tune (30 s)")
+        self.tune_state.setText(esc(text))
+        self._update_mic_summary()
+
+    def _fill_places(self):
+        current = self.place.currentText() or self.s.location()
+        names = list(dict.fromkeys(list(self.s.presets()) + self.s.settings.get("locations", [])))
+        self.place.blockSignals(True)
+        self.place.clear()
+        self.place.addItems(names)
+        self.place.setCurrentText(self.s.active_profile() or current)
+        self.place.blockSignals(False)
 
     # -- recording --
     def _on_device(self):

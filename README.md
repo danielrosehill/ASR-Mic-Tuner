@@ -61,8 +61,10 @@ are in [`docs/gain-mapping.md`](docs/gain-mapping.md).
 - **Left-click** opens a pop-up with the device, a gain slider and ± buttons, a live meter, the verdict and preset choice. It listens only while it's open.
 - **Middle-click** opens the main window. **Right-click** opens a menu with presets, Restore remembered gain and Quit.
 - **Icon style** (tray menu → Icon style, or Settings): **Speech wave** (default), **Pop filter**, **Studio mic** or **Headset**. The status colour tints the wave, the pop filter mesh, the mic grille or the ear cups (grey idle, blue too quiet, green good, amber caution, red too loud); with the live meter on, it fills from the bottom with the level. There is deliberately no round dot, so it doesn't pass for a "recording" indicator. A warning triangle appears, and a notification is sent, when **something else moves your gain** (amber) or the mic clips (red). wireplumber does move it, and was seen resetting the preamp to maximum.
-- **ASR auto gain** (off by default since v2.5, opt in from the tray menu or Settings; it set some internal mics far too low): while you dictate, it moves the **analog** gain itself instead of processing audio. It judges 30 s of recording at a time, moves at most 3 dB, changes nothing while speech sits near the target band, makes changes only in pauses, steps down at once on clipping, and never goes above a ceiling (+15 dB by default). A DSP auto gain rides every word and turns the room up in every pause, which is why it often goes wrong for ASR. This one doesn't.
-- **Conservative gain** (tray menu and Settings, off by default): for rooms where a sudden loud sound is likely (a crying baby, someone shouting). Every gain recommendation (Measure, calibration, the live verdict) and auto gain aim speech peaks at −18 dBFS, the bottom of the target band, instead of −12, which leaves 18 dB before clipping instead of 12. Auto gain also raises in 1.5 dB steps instead of 3. Lowering, and the step down on clipping, are unchanged.
+- **Quick tune** (v2.6; tray pop-up, Measure tab, or `--tune`): press it and talk normally for 30 s. It measures your speech, sets the analog gain so speech peaks land at −10 dBFS (3 dB lower if anything clipped), listens 15 s more to confirm when the change was over 6 dB, and saves the result as a **profile** for this mic and port, named after the place ("Home office", "Coffee shop"). A profile keeps the gain, the noise reduction mode and the numbers it was tuned on. See [`docs/quick-tune.md`](docs/quick-tune.md).
+- **Follows the default mic** (v2.6, setting `follow_default_mic`, on): when the system default input changes (USB mic plugged in, headset picked in Plasma), the tuner switches to it and applies its active profile, else its newest tuned profile, else its remembered gain.
+- **ASR auto gain** (off by default since v2.5, opt in from the tray menu or Settings; it set some internal mics far too low): while you dictate, it moves the **analog** gain itself instead of processing audio. It judges 30 s of recording at a time, moves at most 3 dB (6 dB when more than 8 dB off), changes nothing while speech peaks are within 3 dB of −10 dBFS, makes changes only in pauses, steps down at once on clipping, and never goes above a ceiling (+30 dB by default since v2.6; the old +15 dB held the internal mic about 8 dB under target). A DSP auto gain rides every word and turns the room up in every pause, which is why it often goes wrong for ASR. This one doesn't.
+- **Conservative gain** (tray menu and Settings, off by default): for rooms where a sudden loud sound is likely (a crying baby, someone shouting). Every gain recommendation (Measure, calibration, the live verdict) and auto gain aim speech peaks at −18 dBFS, the bottom of the target band, instead of −10 (−12 before v2.6), which leaves 18 dB before clipping instead of 10. Auto gain also raises in 1.5 dB steps instead of 3. Lowering, and the step down on clipping, are unchanged.
 - **Quiet-mic alert**: while another app (your dictation tool) is recording from the mic, ASR Mic Tuner listens alongside it. If your speech over the last 3 minutes of recording sits well under the target band (6 dB or more below −18 dBFS by default), you get one notification. It counts speech only, so pauses never trigger it, and it repeats at most every half hour. Window and margin are in Settings. With auto gain on, the alert waits until auto gain has hit its ceiling.
 - **ASR Mic running** (tray menu): stop ASR Mic for now, before a call for example, without quitting the app or turning it off. It comes back at login or from the same menu.
 - **Start at login** is a checkbox in the right-click menu and in Settings.
@@ -120,6 +122,8 @@ The GitHub repository was `danielrosehill/Mic-Monitor`; GitHub redirects the old
 asr-mic-tuner --list [--json]                 # every source with real analog gain, presets, remembered gain
 asr-mic-tuner --measure room --seconds 15 --location "living room"   # records, analyses, logs; prints JSON
 asr-mic-tuner --measure voice --seconds 20
+asr-mic-tuner --tune --place "Home office"    # quick tune: talk 30 s, gain set and saved as a profile; JSON
+asr-mic-tuner --tune --dry-run                # measure and plan only, change nothing
 asr-mic-tuner --history [--json]              # the measurement log
 asr-mic-tuner --restore [--delay 8]           # reapply remembered gain (used by the login unit)
 asr-mic-tuner --asr-mic                       # run ASR Mic's chain (used by its user unit)
@@ -129,7 +133,7 @@ asr-mic-tuner --asr-mic                       # run ASR Mic's chain (used by its
 
 | Path | Contents |
 |---|---|
-| `~/.config/asr-mic-tuner/devices.json` | remembered gain per device, named presets, probed-curve cache |
+| `~/.config/asr-mic-tuner/devices.json` | remembered gain per device, named presets and profiles (`presets`, with `port`, `noise_reduction`, `tuned`), the active profile per mic and port (`active_profile`), probed-curve cache |
 | `~/.config/asr-mic-tuner/settings.json` | settings, including the OpenRouter key (mode 600). `OPENROUTER_API_KEY` in the environment also works. |
 | `~/.local/share/asr-mic-tuner/history.db` | SQLite: `measurements`, `profiles` |
 | `~/.local/share/asr-mic-tuner/samples/` | room and voice FLACs, plus `.noiseprof` for each room sample |
@@ -150,6 +154,7 @@ python3 -m asrmictuner       # run from the source tree
 ## Docs
 
 - [`docs/spec.md`](docs/spec.md): design, constraints, acceptance criteria
+- [`docs/quick-tune.md`](docs/quick-tune.md): quick tune, profiles per mic and place, following the default mic, and why the old auto gain left the internal mic too low
 - [`docs/gain-mapping.md`](docs/gain-mapping.md): the measured pactl ↔ ALSA mapping
 - [`docs/analysis.md`](docs/analysis.md): what every metric means and the thresholds behind the findings and score
 - [`docs/kde-integration.md`](docs/kde-integration.md): tray, pop-up placement on Wayland, and the microphone-in-use indicator

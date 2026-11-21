@@ -87,6 +87,25 @@ class TrayPopup(QWidget):
         apply.clicked.connect(lambda: self.presets.currentData() and self.s.apply_preset(self.presets.currentData()))
         prow.addWidget(apply)
         root.addLayout(prow)
+        # Quick tune (v2.6): listen ~30 s, set the gain, save a profile for this place.
+        trow = QHBoxLayout()
+        self.place = QComboBox()
+        self.place.setEditable(True)
+        self.place.setToolTip("Where you are: the profile is saved under this name for this mic")
+        self.place.lineEdit().setPlaceholderText("Place, e.g. Home office")
+        trow.addWidget(self.place, 1)
+        self.tune_button = QPushButton("Quick tune (30 s)")
+        self.tune_button.setToolTip("Talk normally for 30 s; sets the gain for ASR and saves it as a profile")
+        self.tune_button.clicked.connect(self._tune)
+        trow.addWidget(self.tune_button)
+        root.addLayout(trow)
+        self.tune_text = wrap_label()
+        self.tune_text.hide()
+        root.addWidget(self.tune_text)
+        tune = self.ctl.tune
+        tune.progress.connect(self._tune_progress)
+        tune.finished.connect(lambda _l, text: self._tune_end(text))
+        tune.failed.connect(self._tune_end)
         brow = QHBoxLayout()
         for label, tab in (("Open ASR Mic Tuner", "monitor"), ("Measure…", "measure")):
             b = QPushButton(label)
@@ -99,10 +118,38 @@ class TrayPopup(QWidget):
         for signal in (self.s.device_changed, self.s.gain_changed, self.s.presets_changed):
             signal.connect(self.refresh)
 
+    # -- quick tune --
+    def _tune(self):
+        place = self.place.currentText().strip()
+        if place:
+            self.s.set_location(place)
+        self.ctl.tune.start(place)
+
+    def _tune_progress(self, pct, text):
+        self.tune_button.setText("Cancel")
+        self.tune_text.setText(f"<b>{text}</b>")
+        self.tune_text.show()
+
+    def _tune_end(self, text):
+        self.tune_button.setText("Quick tune (30 s)")
+        self.tune_text.setText(text)
+        self.tune_text.show()
+
+    def _fill_places(self):
+        current = self.place.currentText() or self.s.location()
+        names = list(dict.fromkeys(list(self.s.presets()) + self.s.settings.get("locations", [])))
+        self.place.blockSignals(True)
+        self.place.clear()
+        self.place.addItems(names)
+        self.place.setCurrentText(self.s.active_profile() or current)
+        self.place.blockSignals(False)
+
     # -- show / hide own the capture stream --
     def showEvent(self, event):
         super().showEvent(event)
         self._was_active = False
+        if not self.ctl.tune.running:
+            self._fill_places()
         self.refresh()
         self.s.acquire("popup")
         self.timer.start(50)

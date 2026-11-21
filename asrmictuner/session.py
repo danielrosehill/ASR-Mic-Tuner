@@ -248,11 +248,80 @@ class Session(QObject):
         entry = self.presets().get(label)
         if not entry:
             return False
+        ok = False
         if "index" in entry and self.gain is not None:
-            return self.set_index(entry["index"])
-        if "soft_percent" in entry and entry["soft_percent"] is not None:
-            return self.set_soft(entry["soft_percent"])
-        return False
+            ok = self.set_index(entry["index"])
+        elif "soft_percent" in entry and entry["soft_percent"] is not None:
+            ok = self.set_soft(entry["soft_percent"])
+        # A profile (v2.6) also carries the noise reduction mode it was tuned with.
+        nr = entry.get("noise_reduction")
+        if nr and nr != self.settings.get("noise_reduction"):
+            self.settings["noise_reduction"] = nr
+            self.save_settings()
+        if ok or nr:
+            self._set_active_profile(label)
+        return ok
+
+    # -- profiles (v2.6): a preset per mic, port and place, made by quick tune --
+    def _device_key(self, device=None):
+        d = device or self.device
+        return f"{d.name}:{d.port}" if d else None
+
+    def _set_active_profile(self, label):
+        key = self._device_key()
+        if key:
+            self.config.setdefault("active_profile", {})[key] = label
+            save_config(self.config)
+
+    def active_profile(self):
+        key = self._device_key()
+        label = self.config.get("active_profile", {}).get(key) if key else None
+        return label if label in self.presets() else None
+
+    def save_profile(self, label, tuned=None):
+        """Save the current gain, port and noise reduction as profile `label`,
+        make it the remembered gain and the active profile for this mic."""
+        self.save_preset(label, notes="Quick tune" if tuned else "")
+        entry = self.config["presets"][self.device.name][label]
+        entry["port"] = self.device.port
+        entry["noise_reduction"] = self.settings.get("noise_reduction", "off")
+        if tuned:
+            entry["tuned"] = dict(tuned, at=datetime.now().astimezone().isoformat(timespec="seconds"))
+        save_config(self.config)
+        if self.gain is not None:
+            self.remember_current()
+        self._set_active_profile(label)
+        self.presets_changed.emit()
+
+    def follow_default(self):
+        """Switch to the hardware behind the default input if it changed (a USB
+        mic plugged in, a headset picked in Plasma), and apply that mic's active
+        profile. Returns the status text, or None if nothing changed."""
+        # Acts only when the default itself changes, so a mic picked by hand in
+        # the window stays picked until the system default moves.
+        self.rescan()
+        dev = self.preferred_device()
+        key = self._device_key(dev) if dev else None
+        first = not hasattr(self, "_last_default")
+        changed = not first and key != self._last_default
+        self._last_default = key
+        if dev is None or not changed or (self.device and self._device_key() == key):
+            return None
+        self.select_device(dev)
+        label = self.active_profile()
+        if label is None:
+            # The newest tuned profile for this port, if any.
+            tuned = [(e.get("tuned", {}).get("at", ""), l) for l, e in self.presets().items()
+                     if e.get("tuned") and e.get("port", dev.port) == dev.port]
+            label = max(tuned)[1] if tuned else None
+        if label and self.apply_preset(label):
+            text = f"{dev.description}: profile “{label}” applied."
+        elif self.restore_remembered():
+            text = f"{dev.description}: remembered gain applied."
+        else:
+            text = f"{dev.description}: no profile yet. Run Quick tune to make one."
+        self.status.emit(text)
+        return text
 
     def make_preset_default(self, label):
         """Apply a preset and make it the remembered gain."""

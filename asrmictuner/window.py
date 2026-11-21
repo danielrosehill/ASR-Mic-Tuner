@@ -58,7 +58,7 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.monitor = MonitorPage(session)
-        self.measure = MeasurePage(session)
+        self.measure = MeasurePage(session, tune=app_controller.tune)
         self.history = HistoryPage(session)
         self.profiles = ProfilesPage(session)
         self.effects = EffectsPage(session)

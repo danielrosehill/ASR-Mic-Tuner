@@ -91,6 +91,71 @@ def _measure(kind, seconds, device_name, location, notes):
     return 0
 
 
+def _tune(seconds, device_name, place, apply=True):
+    """Headless quick tune: listen, set the gain, save the profile (tune.py)."""
+    from datetime import datetime
+    from . import analysis, store, tune
+    from .capture import Analyser
+    from .core import (Curve, curve_cache_key, default_source, fmt_gain, list_devices, load_config,
+                       pick_gain_control, read_controls, resolve_hardware_for, save_config)
+
+    devices = list_devices()
+    by_name = {d.name: d for d in devices}
+    name = device_name or default_source()
+    if name in by_name and not by_name[name].is_hardware:
+        name = resolve_hardware_for(name) or name
+    dev = by_name.get(name) or next((d for d in devices if d.is_hardware), None)
+    if dev is None:
+        print("no capture device", file=sys.stderr)
+        return 1
+    config, settings = load_config(), store.load_settings()
+    gain = pick_gain_control(read_controls(dev.card)) if dev.is_hardware else None
+    curve = None
+    if gain is not None:
+        curve = gain.curve or Curve.from_json(config["curves"].get(curve_cache_key(dev, gain), {}))
+    if gain is None or curve is None:
+        print("no analog gain control with a known curve on this device", file=sys.stderr)
+        return 1
+    passes, plan = [], None
+    for n, secs in ((1, seconds), (2, tune.VERIFY_SECONDS)):
+        analyser = Analyser(dev.name, dev.channels, dev.rate)
+        analyser.start()
+        time.sleep(0.4)
+        analyser.begin_record()
+        print(f"Pass {n}: talk normally for {secs:g} s on {dev.description} "
+              f"(gain {fmt_gain(curve.db(gain.index))})…", file=sys.stderr)
+        time.sleep(secs)
+        audio = analyser.end_record()
+        analyser.stop()
+        metrics = analysis.analyse_voice(audio, dev.rate)
+        before = fmt_gain(curve.db(gain.index))
+        plan = tune.plan_gain(metrics, settings, curve, gain.index)
+        passes.append({"pass": n, "gain_before": before, "plan": plan, "summary": tune.summary(metrics)})
+        print(tune.describe(plan, before), file=sys.stderr)
+        if not plan["ok"]:
+            print(json.dumps({"ok": False, "passes": passes}, indent=2))
+            return 2
+        if apply and not plan["converged"]:
+            gain.set_index(plan["index"])         # updates gain.values, hence gain.index
+        if not (apply and plan["verify"]) or n == 2:
+            break
+    label = (place or settings.get("location") or "Default").strip()
+    if apply:
+        entry = {"notes": "Quick tune", "created": datetime.now().astimezone().isoformat(timespec="seconds"),
+                 "index": gain.index, "db": curve.db(gain.index), "control": gain.name, "port": dev.port,
+                 "noise_reduction": settings.get("noise_reduction", "off"),
+                 "tuned": dict(passes[-1]["summary"], at=datetime.now().astimezone().isoformat(timespec="seconds"))}
+        config["presets"].setdefault(dev.name, {})[label] = entry
+        config["devices"][dev.name] = {"card_name": dev.card_name, "control": gain.name, "numid": gain.numid,
+                                       "index": gain.index, "db": curve.db(gain.index),
+                                       "saved": entry["created"]}
+        config.setdefault("active_profile", {})[f"{dev.name}:{dev.port}"] = label
+        save_config(config)
+    print(json.dumps({"ok": True, "device": dev.name, "port": dev.port, "profile": label if apply else None,
+                      "gain_db": curve.db(gain.index), "passes": passes}, indent=2))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog=APP,
@@ -105,7 +170,13 @@ def main(argv=None):
     parser.add_argument("--history", action="store_true", help="print the measurement history and exit")
     parser.add_argument("--measure", choices=["room", "voice"],
                         help="record and analyse headlessly, log to history, print JSON")
-    parser.add_argument("--seconds", type=float, default=15.0, help="duration for --measure")
+    parser.add_argument("--seconds", type=float, default=None,
+                        help="duration for --measure (default 15) or --tune (default 30)")
+    parser.add_argument("--tune", action="store_true",
+                        help="quick tune: listen while you talk, set the gain for ASR, save it as a profile "
+                             "for this mic and --place; prints JSON")
+    parser.add_argument("--place", help="profile name for --tune (default: the current location, else Default)")
+    parser.add_argument("--dry-run", action="store_true", help="with --tune: measure and plan only")
     parser.add_argument("--device", help="source name for --measure (default: first hardware device)")
     parser.add_argument("--location", help="location tag for --measure")
     parser.add_argument("--notes", help="notes for --measure")
@@ -140,7 +211,9 @@ def main(argv=None):
                       f"{(m.get('device_label') or m['device'])[:32]:<32}  {key_result(m)}")
         return 0
     if args.measure:
-        return _measure(args.measure, args.seconds, args.device, args.location, args.notes)
+        return _measure(args.measure, args.seconds or 15.0, args.device, args.location, args.notes)
+    if args.tune:
+        return _tune(args.seconds or 30.0, args.device, args.place, apply=not args.dry_run)
     if args.restore:
         from .core import restore_saved
         return restore_saved(args.delay)

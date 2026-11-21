@@ -44,7 +44,7 @@ Speech activity: blocks ≥ max(noise + 12 dB, 30th percentile, −55 dBFS).
 
 | Field | Meaning / threshold |
 |---|---|
-| `speech_peak_p95_dbfs` | 95th percentile of per-block worst-channel peak over active blocks. Target −18…−10, aim −12 |
+| `speech_peak_p95_dbfs` | 95th percentile of per-block worst-channel peak over active blocks. Target −18…−10 for the findings; gain recommendations, quick tune and auto gain aim at −10 since v2.6 (−12 before) |
 | `speech_rms_dbfs` | RMS over active blocks |
 | `snr_db` | speech RMS − noise reference. ≥ 30 excellent, ≥ 20 OK, < 20 fails |
 | `crest_factor_db`, `dynamic_range_db` | p95 peak − RMS; p95 − p10 of active block RMS |

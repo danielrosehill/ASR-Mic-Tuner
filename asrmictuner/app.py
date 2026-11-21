@@ -33,6 +33,8 @@ class Controller:
         self.session.rescan()
         self.watch = QuietWatch(self.session)
         self.watch.alert.connect(self.notify)
+        from .tune import QuickTune
+        self.tune = QuickTune(self.session)
         # Window first, so its pages are connected before the first
         # device_changed fires.
         self.window = MainWindow(self.session, self)
@@ -45,6 +47,14 @@ class Controller:
             self.tray = TrayController(self.session, self)
             self.tray.show()
         self.session.settings_changed.connect(self._tray_setting)
+        self.tune.finished.connect(lambda label, text: self.notify("Quick tune done", text, warn=False))
+        self.tune.failed.connect(lambda text: self.notify("Quick tune", text, warn=False))
+        # Follow the system default input (v2.6): a new USB mic or headset gets
+        # its own profile applied as soon as it becomes the default.
+        self.session.follow_default()           # records the starting default
+        self.follow_timer = QTimer()
+        self.follow_timer.timeout.connect(self._follow)
+        self.follow_timer.start(3000)
         if not start_in_tray or self.tray is None:
             self.show_window("monitor")
 
@@ -58,11 +68,22 @@ class Controller:
             self.tray.hide()
             self.tray = None
 
-    def notify(self, title, body):
+    def _follow(self):
+        if not self.session.settings.get("follow_default_mic", True) or self.tune.running:
+            return
+        names = [d.name for d in self.session.devices]
+        text = self.session.follow_default()
+        if [d.name for d in self.session.devices] != names:
+            self.window._fill_combo()
+        if text:
+            self.notify("Microphone changed", text, warn=False)
+
+    def notify(self, title, body, warn=True):
         """Through the tray icon when there is one, else notify-send."""
         if self.tray is not None:
             from PyQt6.QtWidgets import QSystemTrayIcon
-            self.tray.icon.showMessage(title, body, QSystemTrayIcon.MessageIcon.Warning, 15000)
+            icon = QSystemTrayIcon.MessageIcon.Warning if warn else QSystemTrayIcon.MessageIcon.Information
+            self.tray.icon.showMessage(title, body, icon, 15000)
         elif shutil.which("notify-send"):
             subprocess.Popen(["notify-send", "-a", "ASR Mic Tuner", "-i", "audio-input-microphone", title, body])
 
@@ -85,6 +106,7 @@ class Controller:
 
     def quit(self):
         self.watch.timer.stop()
+        self.follow_timer.stop()
         self.window.settings_page.save()
         if self.tray:
             self.tray.hide()

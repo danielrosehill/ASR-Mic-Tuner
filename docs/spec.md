@@ -516,3 +516,12 @@ mic test and press *Apply recommended gain*. Auto gain is still available as an
 opt-in in the tray menu and Settings. Existing installs keep whatever value is in
 `~/.config/asr-mic-tuner/settings.json`; the default only applies where the key is
 absent, so flip it there (or in the UI) on machines that already had it on.
+
+## v2.6 change (2026-11-21): quick tune, mic profiles, follow the default mic
+
+Quick tune (`tune.py`), profiles per mic, port and place, and following the system
+default input are in [`quick-tune.md`](quick-tune.md), with the measurements behind
+them. Gain recommendations aim speech peaks at −10 dBFS (`CALIB_TARGET_PEAK_DB`, was
+−12). ASR auto gain: ceiling default +30 dB (was 15, migrated once via
+`settings_rev`), dead band ±3 dB around the target (was the −18…−10 band ±2), steps
+up to 6 dB when more than 8 dB off. Auto gain stays off by default.

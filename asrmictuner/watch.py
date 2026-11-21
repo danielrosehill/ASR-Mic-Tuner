@@ -20,14 +20,16 @@ ASR auto gain (off by default since v2.5) works on the same speech blocks, but i
 word and pumps the room noise up in every pause, which is what goes wrong with
 it for ASR. This one:
 - judges the last 30 s of recording, and only once it holds ≥ 8 s of speech;
-- moves at most 3 dB at a time, at most once per 30 s of recording;
-- leaves the gain alone while speech peaks sit in a ±2 dB dead band around
-  the −18…−10 dBFS target;
+- moves at most 3 dB at a time (6 dB when more than 8 dB off, v2.6), at most
+  once per 30 s of recording;
+- leaves the gain alone while speech peaks sit within ±3 dB of the target
+  (−10 dBFS since v2.6, `CALIB_TARGET_PEAK_DB`);
 - changes the gain only in a pause (the last 300 ms below the speech gate),
   so no word straddles a step;
 - steps down 3 dB at once on clipping (at the next pause);
-- never raises the gain above a ceiling (default +15 dB of analog gain, the
-  top of the caution zone; 100 % on software-volume devices).
+- never raises the gain above a ceiling (default +30 dB of analog gain since
+  v2.6; it was +15 dB, which held the laptop's internal mic about 8 dB under
+  target; 100 % on software-volume devices).
 Each change is deliberate, so it becomes the remembered gain and does not
 trip drift detection. With auto gain on, the quiet alert fires only once the
 gain is at the ceiling, because below that auto gain is already fixing it.
@@ -40,7 +42,7 @@ from collections import deque
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from .core import (
-    CHUNK_MS, CONSERVATIVE_RAISE_STEP_DB, SPEECH_GATE_OVER_NOISE_DB, TARGET_HI_DB, TARGET_LO_DB, ZONE_CAUTION_HI,
+    CHUNK_MS, CONSERVATIVE_RAISE_STEP_DB, SPEECH_GATE_OVER_NOISE_DB, TARGET_HI_DB, TARGET_LO_DB,
     fmt_gain, fmt_level, percentile, recording_clients, target_peak_db,
 )
 
@@ -52,7 +54,9 @@ REPEAT_S = 1800             # at most one alert per half hour
 
 AUTO_WINDOW_S = 30.0        # auto gain judges this much recording
 AUTO_MIN_SPEECH_S = 8.0
-AUTO_DEADBAND_DB = 2.0      # beyond the target band before acting
+AUTO_DEADBAND_DB = 3.0      # either side of the target before acting
+AUTO_FAR_DB = 8.0           # this far off, allow the bigger step
+AUTO_FAR_STEP_DB = 6.0
 AUTO_MAX_STEP_DB = 3.0
 PAUSE_S = 0.3
 SOFT_CEILING_PCT = 100
@@ -98,7 +102,7 @@ class QuietWatch(QObject):
         return bool(self.s.settings.get("asr_autogain", False))
 
     def ceiling_db(self):
-        return float(self.s.settings.get("asr_autogain_max_db", ZONE_CAUTION_HI))
+        return float(self.s.settings.get("asr_autogain_max_db", 30))
 
     # -- state --
     def reset(self):
@@ -193,10 +197,12 @@ class QuietWatch(QObject):
             if len(recent) * CHUNK_MS / 1000.0 < AUTO_MIN_SPEECH_S:
                 return False
             level = percentile(recent, 95)
-            if TARGET_LO_DB - AUTO_DEADBAND_DB <= level <= TARGET_HI_DB + AUTO_DEADBAND_DB:
+            want = target_peak_db(self.s.settings) - level
+            if abs(want) <= AUTO_DEADBAND_DB:
                 return False
-            raise_max = CONSERVATIVE_RAISE_STEP_DB if self.s.settings.get("conservative_gain") else AUTO_MAX_STEP_DB
-            step = max(-AUTO_MAX_STEP_DB, min(raise_max, target_peak_db(self.s.settings) - level))
+            big = AUTO_FAR_STEP_DB if abs(want) > AUTO_FAR_DB else AUTO_MAX_STEP_DB
+            raise_max = CONSERVATIVE_RAISE_STEP_DB if self.s.settings.get("conservative_gain") else big
+            step = max(-big, min(raise_max, want))
             why = f"speech peaks {fmt_level(level)}"
         if not self._in_pause(analyser):
             return False                 # try again at the next tick

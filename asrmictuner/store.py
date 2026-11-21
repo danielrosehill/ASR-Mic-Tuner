@@ -51,7 +51,10 @@ DEFAULT_SETTINGS = {
     "asr_mic_bypass": False,
     "noise_reduction": "off",           # quick denoiser over the chain: off, light, strong (engine.NOISE_MODES)
     "asr_autogain": False,              # slow analog auto gain while dictating (watch.py); off by default since v2.5
-    "asr_autogain_max_db": 15,
+    "asr_autogain_max_db": 30,          # analog ceiling; was 15 until v2.6, too low for laptop mics
+    "follow_default_mic": True,         # switch to the new default input and apply its profile (v2.6)
+    "tune_seconds": 30,                 # quick tune listening time (tune.py)
+    "settings_rev": 26,
     "quiet_alert": True,                # notify when dictation runs too quiet (watch.py)
     "quiet_window_min": 3,
     "quiet_margin_db": 6,
@@ -104,6 +107,12 @@ def load_settings():
         data = {}
     merged = dict(DEFAULT_SETTINGS)
     merged.update(data)
+    if int(data.get("settings_rev", 0)) < 26:
+        # v2.6: the old +15 dB auto gain ceiling held laptop mics well under target
+        # (internal ALC257 needs about +20 dB). Lift it unless the user changed it.
+        if merged.get("asr_autogain_max_db") == 15:
+            merged["asr_autogain_max_db"] = 30
+        merged["settings_rev"] = 26
     return merged
 
 
