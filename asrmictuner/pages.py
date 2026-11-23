@@ -513,7 +513,7 @@ class SettingsPage(QWidget):
         self.ceiling = QSpinBox()
         self.ceiling.setRange(0, 40)
         self.ceiling.setSuffix(" dB analog gain")
-        self.ceiling.setValue(int(st.get("asr_autogain_max_db", 15)))
+        self.ceiling.setValue(int(st.get("asr_autogain_max_db", 30)))
         self.ceiling.valueChanged.connect(lambda v: self._set("asr_autogain_max_db", v))
         ql.addRow("Auto gain ceiling", self.ceiling)
         self.quiet = QCheckBox("Notify me when dictation runs too quiet")

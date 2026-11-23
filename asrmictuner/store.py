@@ -55,11 +55,11 @@ DEFAULT_SETTINGS = {
     "asr_mic_source": "",               # mic feeding ASR Mic; "" follows the default input
     "asr_mic_bypass": False,
     "noise_reduction": "off",           # quick denoiser over the chain: off, light, strong (engine.NOISE_MODES)
-    "asr_autogain": False,              # slow analog auto gain while dictating (watch.py); off by default since v2.5
+    "asr_autogain": True,               # slow analog auto gain while dictating (watch.py); on by default again since v3.1
     "asr_autogain_max_db": 30,          # analog ceiling; was 15 until v2.6, too low for laptop mics
     "follow_default_mic": True,         # switch to the new default input and apply its profile (v2.6)
     "tune_seconds": 30,                 # quick tune listening time (tune.py)
-    "settings_rev": 26,
+    "settings_rev": 28,
     "quiet_alert": True,                # notify when dictation runs too quiet (watch.py)
     "quiet_window_min": 3,
     "quiet_margin_db": 6,
@@ -132,6 +132,11 @@ def load_settings():
         legacy["active_room_profile"] = dict(merged.get("active_room_profile") or {})
         merged["active_room_profile"] = {}
         merged["settings_rev"] = 27
+    if int(merged.get("settings_rev", 0)) < 28:
+        # v3.1 (Daniel, 2026-11-23): auto gain on by default. The saved False was the v2.5 default, not a choice;
+        # it left a headset clipping through an 8-minute conversation at a gain tuned for reading.
+        merged["asr_autogain"] = True
+        merged["settings_rev"] = 28
     merged["chain_bindings"] = {k: dict(p["chain_bindings"]) for k, p in profiles.read_all().items()
                                 if p.get("chain_bindings")}
     merged["_bindings_snapshot"] = json.loads(json.dumps(merged["chain_bindings"]))

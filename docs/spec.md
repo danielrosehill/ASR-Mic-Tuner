@@ -517,6 +517,13 @@ opt-in in the tray menu and Settings. Existing installs keep whatever value is i
 `~/.config/asr-mic-tuner/settings.json`; the default only applies where the key is
 absent, so flip it there (or in the UI) on machines that already had it on.
 
+## v3.1 change (2026-11-23): auto gain on by default
+
+Daniel reversed the v2.5 default after an 8.3-minute conversation on the SC230 headset clipped at the
+quick-tuned reading gain (p95 0 dBFS; conversation about 15 dB hotter than read text). `asr_autogain` defaults to
+true in `store.py`, `watch.py` and the UI, and `settings_rev` 28 turns it on once for existing installs. The ceiling
+default in Settings now matches the store (+30 dB). Details: `docs/quick-tune.md`.
+
 ## v2.6 change (2026-11-21): quick tune, mic profiles, follow the default mic
 
 Quick tune (`tune.py`), profiles per mic, port and place, and following the system

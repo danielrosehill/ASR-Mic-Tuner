@@ -99,7 +99,7 @@ class QuietWatch(QObject):
         return float(self.s.settings.get("quiet_margin_db", 6))
 
     def autogain_enabled(self):
-        return bool(self.s.settings.get("asr_autogain", False))
+        return bool(self.s.settings.get("asr_autogain", True))
 
     def ceiling_db(self):
         return float(self.s.settings.get("asr_autogain_max_db", 30))

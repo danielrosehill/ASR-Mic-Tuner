@@ -75,6 +75,12 @@ v2.6 changes:
 - auto gain stays **off by default** (Daniel's v2.5 decision). Quick tune is the
   default way to set the gain.
 
+v3.1 (Daniel, 2026-11-23): **auto gain on by default**, saved settings migrated once (`settings_rev` 28). Why: the SC230
+headset was quick-tuned on read text to +7 dB (speech peak p95 −16 dBFS), and an 8.3-minute spoken conversation at that
+gain sat at p95 0 dBFS with 314 clipped 100 ms windows: conversation runs about 15 dB hotter than reading. Auto gain
+steps down 3 dB at once on clipping and is not DSP (it moves the analog gain in pauses), so it costs nothing in sound.
+The stored preset was applied correctly; the preset was simply right for reading only.
+
 ## Format of the processed stream (decided 2026-11-21)
 
 Asked whether ASR wants a particular rate or format from the virtual source: no.
